@@ -21,8 +21,7 @@ packages = [
     "DeepUrfold.Trainers",
     "DeepUrfold.Evaluators",
     "DeepUrfold.util",
-    "DeepUrfold.scripts",
-    "DeepUrfold.old"
+    "DeepUrfold.scripts"
 ]
 
 
