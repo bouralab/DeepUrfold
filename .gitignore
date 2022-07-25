@@ -1,0 +1,11 @@
+.DS_Store
+*.pth
+*.log
+*.error
+test_autoencoder_cath/runs/*
+*.h5
+*.pdb
+*.noter
+*.pyc
+*.swp
+*/*/.ipynb_checkpoints/*

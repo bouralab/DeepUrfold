@@ -1,0 +1,9 @@
+ALA CYS ASP GLU PHE GLY HIS ILE LYS LEU MET ASN PRO GLN ARG SER THR VAL TRP TYR
+C A N OA OS
+C_elem N_elem O_elem S_elem
+residue_buried
+is_hydrophbic
+pos_charge
+is_electronegative
+is_helix
+is_sheet

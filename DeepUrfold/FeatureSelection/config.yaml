@@ -1,0 +1,77 @@
+# Put all other args here
+prefix: UrfoldExplorer
+
+#model:
+unet: MinkUNet34
+num_layers: 2
+dropout: 0.5
+leakiness: 0.1
+skip_connections: True
+
+# optim:
+#   - lr: 1e-4
+#   - momentum: 0.9
+#   - weight_decay: 1e-4
+#   - lr_decay: 4e-2
+  
+# trainer:
+#   - num_nodes: 1
+#   - gpus: 1
+#   - max_epochs: 100
+#   - val_percent_check: 0.1
+#   - distributed_backend: ddp
+#   - test_percent_check: 0.2
+#   - early_stop_callback: False
+#   - num_sanity_val_steps: 0
+
+# logger:
+#   - cls: pytorch_lightning.logging.WandbLogger
+  
+# data:
+#     superfamily: 2.60.40.10
+#     seqID: 100
+#     data_split: 0.8
+#     path: my_data/train
+#     batch_size: 8
+#     input_size: 256
+
+# features: 
+#     - C
+#     - CA
+#     - N
+#     - O
+#     - OH
+#     - C_elem
+#     - N_elem
+#     - O_elem
+#     - S_elem
+#     - ALA
+#     - CYS
+#     - ASP
+#     - GLU
+#     - PHE
+#     - GLY
+#     - HIS
+#     - ILE
+#     - LYS
+#     - LEU
+#     - MET
+#     - ASN
+#     - PRO
+#     - GLN
+#     - ARG
+#     - SER
+#     - THR
+#     - VAL
+#     - TRP
+#     - TYR
+#     - is_helix
+#     - is_sheet
+#     - residue_buried
+#     - residue_exposed
+#     - atom_is_buried
+#     - atom_exposed
+#     - is_hydrophbic
+#     - pos_charge
+#     - is_electronegative
+

@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Grid</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.0.0/jquery.min.js"></script>
+    <script src="https://3Dmol.org/build/3Dmol-min.js"></script>
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-kQtW33rZJAHjgefvhyyzcGF3C5TFyBQBA13V1RKPf4uH+bwyzQxZ6CmMZHmNBEfJ" crossorigin="anonymous"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-uWxY/CJNBR+1zjPWmfnSnVxwRheevXITnMqoEIeG1LJrdI0GlVs/9cVSyPYXdcSF" crossorigin="anonymous">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-slider/11.0.2/bootstrap-slider.min.js"></script>
+    <script src="heatmap.js"></script>
+    <style type="text/css">
+      .mol-container {
+        width: 100%;
+        height: 800px;
+        position: relative;
+        display: inline-block;
+      }
+      #slider12c .slider-track-high {
+      	background: blue;
+      }
+
+      #slider12c .slider-track-low {
+      	background: red;
+      }
+
+      #slider12c .slider-selection {
+      	background: gray;
+      }
+
+    </style>
+  </head>
+  <body>
+    <div class="btn-group">
+      <button type="button" class="btn btn-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+        total_relevance
+      </button>
+      <ul class="dropdown-menu">
+        <li><a class="dropdown-item" href="#">H</a></li>
+        <li><a class="dropdown-item" href="#">HD</a></li>
+        <li><a class="dropdown-item" href="#">HS</a></li>
+        <li><a class="dropdown-item" href="#">C</a></li>
+        <li><a class="dropdown-item" href="#">A</a></li>
+        <li><a class="dropdown-item" href="#">N</a></li>
+        <li><a class="dropdown-item" href="#">NA</a></li>
+        <li><a class="dropdown-item" href="#">NS</a></li>
+        <li><a class="dropdown-item" href="#">OA</a></li>
+        <li><a class="dropdown-item" href="#">OS</a></li>
+        <li><a class="dropdown-item" href="#">SA</a></li>
+        <li><a class="dropdown-item" href="#">S</a></li>
+        <li><a class="dropdown-item" href="#">Unk_atom</a></li>
+        <li><a class="dropdown-item" href="#">pos_charge</a></li>
+        <li><a class="dropdown-item" href="#">is_electronegative</a></li>
+        <li><a class="dropdown-item" href="#">is_hydrophobic</a></li>
+        <li><a class="dropdown-item" href="#">residue_buried</a></li>
+        <li><a class="dropdown-item" href="#">is_helix</a></li>
+        <li><a class="dropdown-item" href="#">is_sheet</a></li>
+        <li><a class="dropdown-item" href="#">Unk_SS</a></li>
+        <li><a class="dropdown-item" href="#">total_relevance</a></li></ul>
+        <!-- <li><a class="dropdown-item" href="#">Action</a></li>
+        <li><a class="dropdown-item" href="#">Another action</a></li>
+        <li><a class="dropdown-item" href="#">Something else here</a></li>
+        <li><hr class="dropdown-divider"></li>
+        <li><a class="dropdown-item" href="#">Separated link</a></li> -->
+      </ul>
+    </div>
+    <input id="slider" type="text"/><br/>
+    <div id="gldiv" class="mol-container"></div>
+
+    <div id="heatmapdiv"></div>
+
+    <script type="text/javascript">
+    var sfams = null;
+    var current_data = null;
+    var viewers = null;
+    var viewer = null;
+    var model = null;
+    var atoms = null;
+    var model_done = false;
+    var prop_map = null;
+    $("#slider").slider({ id: "slider12c", min: 0, max: 100, range: true, value: [50, 90] });
+    $(".dropdown-menu li a").click(function(){
+      $(".btn:first-child").html($(this).text()+' <span class="caret"></span>');
+      createGrid($(this).text());
+      console.log("Updated");
+    });
+    $(function() {
+      $(".dropdown-menu li a").click(function(){
+        $(".btn:first-child").html($(this).text()+' <span class="caret"></span>');
+        createGrid($(this).text());
+        console.log("Updated");
+      });
+      console.log($(".dropdown-menu li a"));
+        $("#slider").slider({ id: "slider12c", min: 0, max: 100, range: true, value: [50, 90] });
+         viewers = $3Dmol.createViewerGrid(
+           'gldiv', //id of div to create canvas in
+           {
+             rows: 4,
+             cols: 5,
+             control_all: true  //mouse controls all viewers
+           },
+           { backgroundColor: 'lightgrey' }
+         );
+         var colors = [
+           ['#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231'],
+           ['#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe'],
+           ['#008080', '#e6beff', '#9a6324', '#fffac8', '#800000'],
+           ['#aaffc3', '#808000', '#ffd8b1', '#000075', '#808080'],
+           ['#ffffff', '#000000']];
+
+         $(".dropdown-menu li a").click(function(){
+           $(".btn:first-child").html($(this).text()+' <span class="caret"></span>');
+           createGrid($(this).text());
+           console.log("Updated");
+         });
+
+         const queryString = window.location.search;
+         const urlParams = new URLSearchParams(queryString);
+         var domain = urlParams.get('domain');
+         if(domain===null){
+           domain='1a04A02';
+         }
+
+        $.getJSON(domain+'.json', function(data) {
+         // $.get('https://files.rcsb.org/download/1JPY.cif', function(data) {
+           console.log(data);
+           console.log(data.pdb);
+           var pdb_data = data.pdb;
+           sfams = Object.keys(data);
+           console.log(Object.keys(data[sfams[1]][0].props));
+           var features = Object.keys(data[sfams[1]][0].props);
+           console.log(features.length);
+           var menuHtml = "";
+           for (var i = 0; i < features.length; i++) {
+              var feature = features[i];
+              menuHtml += '<li><a class="dropdown-item" href="#">' + feature + '</a></li>';
+              // menuHtml += '<li><a onclick="createGrid(' + feature + ')" href="#">' + feature + '</a></li>';
+           }
+           d3.select(".dropdown-menu").html(menuHtml);
+           $(".dropdown-menu li a").click(function(){
+             $(".btn:first-child").html($(this).text()+' <span class="caret"></span>');
+             createGrid($(this).text());
+             console.log("Updated");
+           });
+           current_data = data;
+           createGrid("total_relevance", 0.5, 0.9);
+           create_heatmap(data, "total_relevance", 0.5, 0.9, "#heatmapdiv")
+           // console.log(sfams);
+           // const index = sfams.indexOf('pdb');
+           // if (index > -1) {
+           //   sfams.splice(index, 1);
+           // }
+           // console.log(sfams);
+           /*var c = 1;
+           for(var i=0; i<4; i++){
+             for(var j=0; j<5; j++){
+               if(c>=sfams.length){
+                 break
+               }
+               var propMap = data[sfams[c]];
+               console.log(propMap);
+               colorscheme = {
+                 'prop': "total_relevance",
+                 'gradient':"rwb", //new $3Dmol.Gradient.Sinebow(0,50),
+                 'min':d3.quantile(propMap, 0.5, d => d.props.total_relevance),
+                 'max':d3.quantile(propMap, 0.9, d => d.props.total_relevance)
+               };
+               console.log(colorscheme);
+               console.log(pdb_data);
+               console.log(viewers);
+               viewer = viewers[i][j];
+               model = viewer.addModel(pdb_data,'pdb');
+               model.setClickable({}, true, atomcallback);
+               // atoms = model.selectedAtoms({});
+               // console.log(atoms);
+            	 // for ( var i=0; i<atoms.length; i++) {
+               //   console.log(i);
+            	 // 	 var atom = atoms[i];
+            	 // 	 atom.clickable = true;
+            	 // 	 atom.callback = atomcallback;
+            	 // }
+               console.log("DONE");
+               viewer.mapAtomProperties(propMap);
+               //viewer.setStyle({cartoon:{color:colors[i][j]}});
+               viewer.setStyle({'cartoon':{'colorscheme':colorscheme}, 'stick':{'colorscheme':colorscheme}});
+               viewer.addLabel(sfams[c], {
+                  fixed: false,
+                  screenOffset: {x:50, y:50},
+                  position: {x:0, y:0, z:0},
+                  inFront: true,
+          				fontSize : 14,
+                  alignment:	'topCenter',
+          				backgroundColor: "black"});
+               viewer.zoomTo();
+               viewer.render( );
+               c++;
+             }
+           }*/
+           // viewer = viewers[0][0];
+           // viewer.addModel(data,'cif');
+           // viewer.setStyle({sphere:{}});
+           // viewer.zoomTo();
+           // viewer.render( );
+           //
+           // viewer = viewers[0][1];
+           // viewer.addModel(data,'cif');
+           // viewer.setStyle({stick:{}});
+           // viewer.zoomTo();
+           // viewer.render( );
+           //
+           // viewer = viewers[1][0];
+           // viewer.addModel(data,'cif');
+           // viewer.setStyle({cartoon:{color:'spectrum'}});
+           // viewer.zoomTo();
+           // viewer.render( );
+           //
+           // viewer = viewers[1][1];
+           // viewer.addModel(data,'cif');
+           // viewer.setStyle({cartoon:{colorscheme:'chain'}});
+           // viewer.zoomTo();
+           // viewer.render();
+         }).fail(function(e) {
+          console.log( "error", e );
+        });
+
+
+    });
+
+    var createGrid = function(property, start_quantile, end_quantile){
+      var c = 1;
+      for(var i=0; i<4; i++){
+        for(var j=0; j<5; j++){
+          if(c>=sfams.length){
+            break
+          }
+          viewer = viewers[i][j];
+          if(!model_done){
+              model = viewer.addModel(current_data.pdb,'pdb');
+              model.setClickable({}, true, atomcallback);
+              propMap = current_data[sfams[c]];
+              viewer.mapAtomProperties(propMap);
+              viewer.addLabel(sfams[c], {
+                 fixed: false,
+                 screenOffset: {x:50, y:50},
+                 position: {x:0, y:0, z:0},
+                 inFront: true,
+                 fontSize : 14,
+                 alignment:	'topCenter',
+                 backgroundColor: "black"});
+
+          }
+          // atoms = model.selectedAtoms({});
+          // console.log(atoms);
+          // for ( var i=0; i<atoms.length; i++) {
+          //   console.log(i);
+          // 	 var atom = atoms[i];
+          // 	 atom.clickable = true;
+          // 	 atom.callback = atomcallback;
+          // }
+          console.log("DONE");
+
+          colorscheme = {
+            'prop': property, //"total_relevance",
+            'gradient':"rwb", //new $3Dmol.Gradient.Sinebow(0,50),
+            'min':d3.quantile(propMap, start_quantile, d => d.props[property]),
+            'max':d3.quantile(propMap, end_quantile, d => d.props[property])
+          };
+
+          //viewer.setStyle({cartoon:{color:colors[i][j]}});
+          viewer.setStyle({'cartoon':{'colorscheme':colorscheme}, 'stick':{'colorscheme':colorscheme}});
+
+          viewer.zoomTo();
+          viewer.render( );
+          c++;
+        }
+      }
+      model_done = true;
+      $(".dropdown-menu li a").click(function(){
+        $(".btn:first-child").html($(this).text()+' <span class="caret"></span>');
+        createGrid($(this).text());
+        console.log("Updated");
+      });
+      console.log($(".dropdown-menu li a"));
+        $("#slider").slider({ id: "slider12c", min: 0, max: 100, range: true, value: [50, 90] });
+    }
+
+    var atomcallback = function(aatom, vviewer) {
+        vviewer.removeAllLabels();
+       if (aatom.clickLabel === undefined
+           || !aatom.clickLabel instanceof $3Dmol.Label) {
+         aatom.clickLabel = vviewer.addLabel(aatom.elem + aatom.serial +": "+aatom.properties.total_relevance, {
+           fontSize : 14,
+           position : {
+             x : aatom.x,
+             y : aatom.y,
+             z : aatom.z
+           },
+           backgroundColor: "black"
+         });
+         aatom.clicked = true;
+       }
+
+       //toggle label style
+       else {
+
+         if (aatom.clicked) {
+           var newstyle = aatom.clickLabel.getStyle();
+           newstyle.backgroundColor = 0x66ccff;
+
+           vviewer.setLabelStyle(aatom.clickLabel, newstyle);
+           aatom.clicked = !aatom.clicked;
+         }
+         else {
+           vviewer.removeLabel(aatom.clickLabel);
+           delete aatom.clickLabel;
+           aatom.clicked = false;
+         }
+
+       }
+     };
+    </script>
+  </body>
+</html>

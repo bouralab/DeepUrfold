@@ -1,0 +1,72 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: molmimic
+  name: toil-user
+rules:
+- apiGroups: ["*"]
+  resources: ["*"]
+  verbs: ["explain", "get", "watch", "list", "describe", "logs", "attach", "exec", "port-forward", "proxy", "cp", "auth"]
+- apiGroups: ["batch"]
+  resources: ["*"]
+  verbs: ["get", "watch", "list", "create", "run", "set", "delete"]
+- apiGroups: [""]
+  resources: ["secrets", "pods", "pods/attach", "podtemplates", "configmaps", "events", "services"]
+  verbs: ["patch", "get", "update", "watch", "list", "create", "run", "set", "delete", "exec"]
+- apiGroups: [""]
+  resources: ["pods", "pods/log"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["create"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: node-reader
+rules:
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "list", "describe"]
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["get", "list", "describe"]
+- apiGroups: ["metrics.k8s.io"]
+  resources: ["*"]
+  verbs: ["*"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: toil-developer-member
+  namespace: toil
+subjects:
+- kind: User
+  name: default
+  apiGroup: rbac.authorization.k8s.io
+- kind: ServiceAccount
+  name: default
+  namespace: molmimic
+roleRef:
+  kind: Role
+  name: toil-user
+  apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: read-nodes
+subjects:
+- kind: User
+  name: default
+  apiGroup: rbac.authorization.k8s.io
+- kind: ServiceAccount
+  name: default
+  namespace: molmimic
+roleRef:
+  kind: ClusterRole
+  name: node-reader
+  apiGroup: rbac.authorization.k8s.io

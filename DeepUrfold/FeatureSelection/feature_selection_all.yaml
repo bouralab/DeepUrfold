@@ -1,0 +1,105 @@
+program: /project/ppi_workspace/BindingSitePredictor/train_lightning_model.py
+command:
+  - "singularity run --nv -B /home/ed4bu/MinkowskiEngine/MinkowskiEngine:/opt/conda/lib/python3.6/site-packages/MinkowskiEngine-0.4.2-py3.6-linux-x86_64.egg/MinkowskiEngine /project/ppi_workspace/containers/pytorch-minkowsi.simg"
+  - ${program}
+  - "--gpus 4"
+  - "--distributed_backend dp"
+method: bayes
+metric:
+  name: val_loss
+  goal: minimize
+parameters:
+  features_to_drop:
+    distribution: categorical
+    values:
+      - H
+      - HD
+      - HS
+      - C
+      - A
+      - N
+      - NA
+      - NS
+      - OA
+      - OS
+      - F
+      - MG
+      - P
+      - SA
+      - S
+      - CL
+      - CA
+      - MN
+      - FE
+      - ZN
+      - BR
+      - I
+      - Unk_atom
+      - C_elem
+      - N_elem
+      - O_elem
+      - S_elem
+      - H_elem
+      - F_elem
+      - MG_elem
+      - P_elem
+      - CL_elem
+      - CA_elem
+      - MN_elem
+      - FE_elem
+      - ZN_elem
+      - BR_elem
+      - I_elem
+      - Unk_elem
+      - vdw
+      - charge
+      - neg_charge
+      - pos_charge
+      - electrostatic_potential
+      - is_electronegative
+      - cx
+      - is_concave
+      - hydrophobicity
+      - is_hydrophobic
+      - biological_hydrophobicity
+      - octanal_hydrophobicity
+      - atom_asa
+      - residue_rasa
+      - residue_buried
+      - ALA
+      - CYS
+      - ASP
+      - GLU
+      - PHE
+      - GLY
+      - HIS
+      - ILE
+      - LYS
+      - LEU
+      - MET
+      - ASN
+      - PRO
+      - GLN
+      - ARG
+      - SER
+      - THR
+      - VAL
+      - TRP
+      - TYR
+      - Unk_residue
+      - phi
+      - phi_sin
+      - phi_cos
+      - psi
+      - psi_sin
+      - psi_cos
+      - is_helix
+      - is_sheet
+      - Unk_SS
+      - hydrophobic_atom
+      - aromatic_atom
+      - hbond_acceptor
+      - hbond_donor
+      - metal
+      - eppic_entropy
+      - is_conserved

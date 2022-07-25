@@ -1,0 +1,14 @@
+{
+  "name": "@d3/zoomable-circle-packing",
+  "main": "5831f55fccfa1c41@165.js",
+  "version": "165.0.0",
+  "homepage": "https://observablehq.com/@d3/zoomable-circle-packing",
+  "author": {
+    "name": "D3",
+    "url": "https://observablehq.com/@d3"
+  },
+  "type": "module",
+  "peerDependencies": {
+    "@observablehq/runtime": "4"
+  }
+}

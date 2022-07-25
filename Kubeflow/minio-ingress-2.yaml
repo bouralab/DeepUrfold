@@ -1,0 +1,22 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-minio
+  namespace: minio-tenant-1
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$1
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_input_headers 'Host: minio:80';
+    nginx.ingress.kubernetes.io/upstream-vhost: "minio:80"
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /minio/?(.*)
+            pathType: Prefix
+            backend:
+              service:
+                name: minio
+                port:
+                    number: 80

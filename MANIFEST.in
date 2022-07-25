@@ -1,0 +1,7 @@
+include DeepUrfold/FeatureSelection/*
+include DeepUrfold/Analysis/AllVsAll/SequenceBased/*
+include DeepUrfold/Analysis/Webapp/*
+include DeepUrfold/Analysis/Webapp/*/*
+include DeepUrfold/Analysis/Webapp/*/*/*
+include DeepUrfold/Analysis/Webapp/*/*/*/*
+include DeepUrfold/figures/*

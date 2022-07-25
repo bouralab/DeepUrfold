@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8'>
+  <title>Circle Packing with hierarchical edge bundling</title>
+  <link type='text/css' href="{{ url_for('static', filename='css/index.css') }}" rel='stylesheet'/>
+  <link href='http://fonts.googleapis.com/css?family=Cardo:400,700' rel='stylesheet' type='text/css'>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0-beta1/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-0evHe/X+R7YkIZDRvuzKMRqM+OrBnVFBL6DOitfPri4tjfHxaWutUpFmBp4vmVor" crossorigin="anonymous">
+  <link href="{{ url_for('static', filename='css/bootstrap-table.min.css') }}" rel='stylesheet'>
+  <style type="text/css">
+    #ip2 {
+    border-radius: 25px;
+    border: 2px solid rgb(6, 5, 6);
+    padding: 20px;
+    width: 200px;
+    height: 10px;
+    }
+  </style>
+</head>
+<body>
+<br />
+  <div class="container">
+    <div class="row">
+      <div class="col" style="color:#0d6efd;">Select feature to color domains:</div>
+      <div class="col"></div>
+      <div class="col" style="color:#6C7583;">Add/Remove data source:</div>
+    </div>
+    <div class="row">
+      <nav class="navbar navbar-left navbar-expand-lg bg-light">
+        <div class="container-fluid">
+          <div class="btn-toolbar" role="toolbar" aria-label="Toolbar with button groups">
+            <div class="d-flex justify-content-between mb-2">
+              <div class="p-2">
+                <div class="btn-group btn-group-sm me-2" role="group" aria-label="Feature Group">
+                  <button type="button" class="btn btn-outline-primary btn-group-features" id="ss" onclick="changeColor('ss')">Secondary Structure</button>
+                  <button type="button" class="btn btn-outline-primary btn-group-features" id="charge" onclick="changeColor('charge')">Charge</button>
+                  <button type="button" class="btn btn-outline-primary btn-group-features" id="electrostatics" onclick="changeColor('electrostatics')">Electrostatic Potential</button>
+                  <button type="button" class="btn btn-outline-primary btn-group-features" id="sfam" onclick="changeColor('sfam')">Superfamilies</button>
+                  <button type="button" class="btn btn-outline-primary btn-group-features" id="go_mf" onclick="changeColor('go_mf')">Molecular Function</button>
+                  <button type="button" class="btn btn-outline-primary btn-group-features" id="go_bp" onclick="changeColor('go_bp')">Biological Process</button>
+                  <button type="button" class="btn btn-outline-primary btn-group-features" id="go_cc" onclick="changeColor('go_cc')">Cellular Component</button>
+                </div>
+                <div class="btn-group btn-group-sm me-2" role="group" aria-label="Second group">
+                  <button type="button" class="btn btn-secondary" id="deepurfold_button" onclick="addDeepUrfold()">DeepUrfold</button>
+                  <button type="button" class="btn btn-outline-secondary" id="cath_button" onclick="addCATH()">CATH</button>
+                </div>
+              </div>
+              <div class="p-2 d-flex justify-content-end">
+                <div class="btn-group btn-group-sm d-flex justify-content-end" role="group" aria-label="Third group">
+                  <button type="button" class="btn btn-info d-flex justify-content-end" onclick="savesvg(true)">Save SVG</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+
+    <br/>
+    <div class="row">
+    </div>
+
+<!--
+  <button type="button" class="btn btn-primary feature-button" onclick="changeColor('ss')">Secondary Structure</button>
+  <button type="button" class="btn btn-primary feature-button" onclick="changeColor('charge')">Charge</button>
+  <button type="button" class="btn btn-primary feature-button" onclick="changeColor('electrostatics')">Electrostatic Potential</button>
+  <button type="button" class="btn btn-primary feature-button" onclick="changeColor('sfam')">Superfamilies</button>
+  <button type="button" class="btn btn-primary feature-button" onclick="changeColor('go_mf')">Molecular Function</button>
+  <button type="button" class="btn btn-primary feature-button" onclick="changeColor('go_bp')">Biological Process</button>
+  <button type="button" class="btn btn-primary feature-button" onclick="changeColor('go_cc')">Cellular Component</button>
+  | <div class="btn-group" data-toggle="buttons">
+    <label class="btn btn-default btn-primary">
+      <input type="radio" name="source" id="deepurfold" value="/flare" autocomplete="off" selected>DeepUrfold
+    </label>
+    <label class="btn btn-default">
+      <input type="radio" name="source" id="cath" value="/cath" autocomplete="off">CATH
+    </label>
+  </div>
+
+  <div class="btn-group mr-2" role="group" aria-label="First group">
+    <button type="button" class="btn btn-secondary">DeepUrfold</button>
+    <button type="button" class="btn btn-secondary">CATH</button>
+  </div>
+
+  <button onclick="savesvg(true)">Save SVG</button>  -->
+  <!-- <input type="text" id="ip2" placeholder="Search Domain or Superfamily" onchange="search()" /> <br /><br /> -->
+<div class="row">
+  <div class="col" style="display: inline-block; width: 42%; float: left; overflow: visible" id="deepurfold_div"><svg id="deepurfold" width=850 height=850></svg></div>
+  <div class="col" style="display: inline-block; width: 42%; float: left; overflow: visible" id="cath_div"><svg id="cath" width=500 height=500></svg></div>
+</div>
+<div class="row" id="note" style="font-size: small;">
+</div>
+<br\>
+<br\>
+<div class="row">
+</div>
+<div class="row">
+<div style="float: left; overflow: visible">
+  <div id="toolbar">
+    <div>Search for domains or features in the table, check rows to highlight in circle packing diagrams:</div>
+  </div>
+  <table id="domains_table">
+  </table>
+</div>
+</div>
+</div>
+</body>
+  <canvas id="canvas"></canvas>
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0-beta1/dist/js/bootstrap.bundle.min.js" integrity="sha384-pprn3073KE6tl6bjs2QrFaJGz5/SUsLqktiwsUTF55Jfv3qYSDhgCecCxMW52nD2" crossorigin="anonymous"></script>
+  <script src="{{ url_for('static', filename='js/bootstrap-table.min.js') }}"></script>
+  <script src='{{ url_for('static', filename='js/d3.v5.min.js') }}'></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3-legend/2.25.6/d3-legend.min.js" integrity="sha512-wNH6xsp2n8CfB91nrBtfc4sfLwYPBMjSWVUwQOp60AYYXH6i8yCwuKFZ4rgK2i6pQek/b+bSyR7b01/922IBzQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="{{ url_for('static', filename='js/index.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/radial_tree.js') }}"></script>
+  <script type="text/javascript">
+    document.addEventListener("DOMContentLoaded", function(event) {
+      let searchParams = new URLSearchParams(window.location.search);
+
+      var select_feature = searchParams.get('feature','none')
+      if(['ss', 'charge', 'electrostatics', 'sfam', 'go_mf', 'go_bp', 'go_cc'].includes(select_feature)){
+        var start_feature = select_feature;
+      }
+      else{
+        var start_feature = "ss";
+      }
+
+      var should_save = searchParams.get('save_svg','false') == 'true'
+
+      var load_cath = searchParams.get('load_cath','false') == 'true'
+
+      draw_circle_packing_chart("/flare", '/flare_links', "deepurfold", start_feature, should_save);
+      //draw_circle_packing_chart("flare-cath.csv", 'flare_links.csv', "cath");
+
+
+    });
+  </script>
+</body>
+</html>

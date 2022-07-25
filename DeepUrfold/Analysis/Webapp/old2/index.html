@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>d3.js example | circle packing in a rectangle</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.0.0/jquery.min.js"></script>
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/3Dmol/1.7.0/3Dmol-min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.min.js" integrity="sha384-wfSDF2E50Y2D1uUdj0O3uMBJnjuUD4Ih7YwaYd1iqfktj0Uod8GCExl3Og8ifwB6" crossorigin="anonymous"></script>
+    <script src='https://cdn.plot.ly/plotly-2.6.3.min.js'></script>
+
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css" integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
+
+
+    <script src="./d3Chart.js" type="text/javascript"></script>
+    <style type="text/css">
+      .bar { fill: steelblue; }
+      .bubbles {
+        stroke-width: 2px;
+        stroke: white;
+      }
+      .bubbles:hover {
+        stroke: black;
+      }
+      .mol-container {
+        width: 100%;
+        height: 800px;
+        position: relative;
+        display: inline-block;
+      }
+      .table {
+          display: table;
+          height: 100%;
+          width: 100%;
+      }
+
+      .tablerow {
+          display: table-row;
+      }
+
+      .row, .col { overflow: hidden;
+       }
+          .row { left: 0; right: 0; }
+      .header { height: 90px;
+      margin-top: 0px;
+      vertical-align: top;
+      position: relative;
+      display: table;
+      width: 100%;
+      z-index:10;
+      }
+      .viewer_3Dmoljs {
+          display: table-cell;
+          position: relative;
+          width: 20%;
+          height: 300px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="row">
+        <div class="col-sm-6 bubblechart"></div>
+        <div class="col-sm-6 legend"></div>
+        <!-- </div>
+        <div class="col-sm-6">
+          <div style="display: inline-block; width: 42%" id="legend"></div>
+        </div> -->
+      </div>
+    </div>
+    Selected Community: <span id="selected_community"><i>None</i></span>
+    <div class="container">
+      <div class="row">
+        <div class="col-sm-4">
+          <ul class="nav nav-tabs" id="myTab" role="tablist">
+            <li class="nav-item" role="presentation">
+              <button class="nav-link active" id="shapemers-tab" data-bs-toggle="tab" data-bs-target="#shapemers" type="button" role="tab" aria-controls="shapemers" aria-selected="true">Shapemers</button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" id="relevance-tab" data-bs-toggle="tab" data-bs-target="#relevance" type="button" role="tab" aria-controls="relevance" aria-selected="true">Relevance</button>
+            </li>
+          </ul>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-sm-4">
+          <div class="dropdown">
+            <a class="btn btn-primary dropdown-toggle" href="#" role="button" id="dropdownMenuLink" data-bs-toggle="dropdown" aria-expanded="false">
+              Select data type
+            </a>
+
+            <ul class="dropdown-menu" aria-labelledby="dropdownMenuLink">
+            </ul>
+          </div>
+        </div>
+        <div class="col-sm-12">
+          <div class="tab-content" id="myTabContent">
+            <div class="tab-pane fade show active" id="shapemers" role="tabpanel" aria-labelledby="shapemers-tab">Select community to see shapemers</div>
+            <div class="tab-pane fade" id="relevance" role="tabpanel" aria-labelledby="relevance-tab">Select community to see LRP results on structures</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
+    <div class="tooltipdiv"></div>
+
+
+
+    <script type="text/javascript">
+    var data = d3.json("./domain_communities.json").then(data => {
+      drawChart(".bubblechart", ".legend", data)
+    });
+
+    // $(function() {
+    //     var viewer = $3Dmol.createViewer($("#protein"));
+    //     $3Dmol.download("pdb:1MO8",viewer,{multimodel:true, frames:true},function(){
+    //     	viewer.setStyle({}, {cartoon:{color:"spectrum"}});
+    //     	viewer.render();
+    //     });
+    // });
+    </script>
+  </body>
+</html>

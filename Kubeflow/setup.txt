@@ -1,0 +1,207 @@
+#Install NVIDIA libraries
+
+#Install docker
+
+#Make sure latest containers is installed (>=1.5.5)
+sudo apt-get update -y
+sudo apt-get install -y containerd
+
+#Install nvidia docker
+sudo apt-get install nvidia-container-runtime
+sudo apt-get update && sudo apt-get install -y nvidia-docker2
+sudo pkill -SIGHUP dockerd
+
+#Make the docker runtime Nvidia by default
+```
+{
+    "default-runtime":"nvidia",
+    "runtimes": {
+        "nvidia": {
+            "path": "nvidia-container-runtime",
+            "runtimeArgs": []
+        }
+    }
+}
+```
+
+sudo mkdir /etc/containerd
+sudo vi /etc/containerd/config.tom
+
+```
+version = 2
+
+[plugins]
+
+  [plugins."io.containerd.grpc.v1.cri"]
+
+    [plugins."io.containerd.grpc.v1.cri".containerd]
+      default_runtime_name = "nvidia"
+
+      [plugins."io.containerd.grpc.v1.cri".containerd.runtimes]
+
+        [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nvidia]
+          privileged_without_host_devices = false
+          runtime_engine = ""
+          runtime_root = ""
+          runtime_type = "io.containerd.runc.v1"
+
+          [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nvidia.options]
+            BinaryName = "/usr/local/nvidia/toolkit/nvidia-container-runtime
+```
+
+curl -sfL https://get.k3s.io | sh -
+
+sudo kubectl get nodes
+
+
+sudo mkdir -p /var/lib/rancher/k3s/agent/etc/containerd/
+sudo vi /var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl
+
+```
+
+[plugins.opt]
+  path = "/var/lib/rancher/k3s/agent/containerd"
+
+[plugins.cri]
+  stream_server_address = "127.0.0.1"
+  stream_server_port = "10010"
+  enable_selinux = false
+  sandbox_image = "rancher/pause:3.1"
+
+[plugins.cri.containerd]
+  default_runtime_name = "nvidia"
+  disable_snapshot_annotations = true
+  snapshotter = "overlayfs"
+
+[plugins.cri.cni]
+  bin_dir = "/var/lib/rancher/k3s/data/HASH/bin"
+  conf_dir = "/var/lib/rancher/k3s/agent/etc/cni/net.d"
+
+[plugins.cri.containerd.runtimes.nvidia]
+  privileged_without_host_devices = false
+  runtime_engine = ""
+  runtime_root = ""
+  runtime_type = "io.containerd.runc.v2"
+
+[plugins.cri.containerd.runtimes.nvidia.options]
+  BinaryName = "nvidia-container-runtime"
+```
+
+curl -sfL https://get.k3s.io | sh -s - --docker
+
+#Enabling GPU Support in Kubernetes by adding correct DaemonSet
+kubectl create -f https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.10.0/nvidia-device-plugin.yml
+
+
+#https://rancher.com/docs/k3s/latest/en/advanced/#using-docker-as-the-container-runtime
+curl -sfL https://get.k3s.io | sh -s - --docker
+
+wget https://github.com/kubernetes-sigs/kustomize/releases/download/v3.2.0/kustomize_3.2.0_linux_amd64
+chmod +x kustomize_3.2.0_linux_amd64
+sudo mv kustomize_3.2.0_linux_amd64 /usr/local/bin/kustomize
+
+git clone https://github.com/kubeflow/manifests.git
+cd manifests
+while ! sudo kustomize build example | sudo kubectl apply -f -; do echo "Retrying to apply resources"; sleep 10; done
+
+#install MinIO
+
+#OLD:
+#kubectl create namespace my-namespace
+#git clone https://github.com/sleighzy/k3s-minio-deployment.git
+#sudo kubectl apply -f 100-pvc.yaml
+#sudo kubectl apply -f 200-secrets.yaml
+#sudo kubectl apply -f 300-service.yaml
+#sudo kubectl apply -f 400-deployment.yaml
+#sudo kubectl apply -f 500-ingressroute.yaml
+#alias mc='sudo docker run -it --entrypoint=mc minio/mc'
+
+sudo kubectl krew update
+sudo kubectl krew install minio
+# prerequisity
+sudo kubectl create namespace minio-tenant-1
+sudo kubectl minio init
+sudo kubectl minio tenant create minio-tenant-1 --servers 1 --volumes 4 --capacity 500Gi --namespace minio-tenant-1 --storage-class local-path --enable-host-sharing
+
+sudo wget -O /usr/local/bin/mc https://dl.min.io/client/mc/release/linux-amd64/mc
+sudo chmod +x /usr/local/bin/mc
+
+
+#HSDS config files must be names 'config.yaml' or 'override.yaml', no variations allowed
+
+
+# Create a public private key pair
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout minio.key -out minio.crt -subj "/CN=minio.minio-tenant-1.svc.cluster.local/O=minio.minio-tenant-1.svc.cluster.local"
+
+sudo kubectl -n minio-tenant-1 create secret tls tls-minio-ingress --cert=minio.crt --key=minio.key
+
+sudo kubectl apply -f k8s_rbac.yml
+sudo kubectl create configmap hsds-config --from-file=config.yml --from-file=override.yml
+sudo kubectl apply -f hsds_deployment.yml
+sudo kubectl apply -f hsds_service.yml
+
+[default]
+aws_access_key_id = KEY_ID
+aws_secret_access_key = ACCESS_KEY
+
+sudo kubectl create secret generic aws-credentials --from-file minio.aws
+
+
+# Convert the keys to base64 encoding
+cat /d/tmp/nginx.crt | base64
+cat /d/tmp/nginx.key | base64
+
+cat <<EOF | sudo kubectl apply -f -
+apiVersion: "v1"
+kind: "Secret"
+metadata:
+  name: "miniosecret"
+type: kubernetes.io/tls
+data:
+  tls.crt: |
+    $(cat minio.crt | base64 | tr -d " \t\n\r")
+  tls.key: |
+    $(cat minio.key | base64 | tr -d " \t\n\r")
+EOF
+
+
+##https://kubernetes.io/docs/tasks/tls/managing-tls-in-a-cluster/
+
+sudo apt install golang-cfssl
+
+cat <<EOF | sudo cfssl genkey - | sudo cfssljson -bare server
+{
+  "hosts": [
+    "minio.minio-tenant-1.svc.cluster.local",
+    "minio-tenant-1-ss-0-0.minio-tenant-1.pod.cluster.local",
+    "$(sudo kubectl describe service minio -n minio-tenant-1 | grep "IP:" | awk '{print $NF}')",
+    "$(sudo kubectl describe pod minio-tenant-1 -n minio-tenant-1 | grep "IP:" | awk '{print $NF}' | head -n 1)"
+  ],
+  "CN": "system:node:minio-tenant-1-ss-0-0.minio-tenant-1.pod.cluster.local",
+  "key": {
+    "algo": "ecdsa",
+    "size": 256
+  },
+  "names": [
+    {
+      "O": "system:nodes"
+    }
+  ]
+}
+EOF
+
+cat <<EOF | sudo kubectl apply -f -
+apiVersion: certificates.k8s.io/v1
+kind: CertificateSigningRequest
+metadata:
+  name: minio.minio-tenant-1.svc.cluster.local
+spec:
+  request: $(cat server.csr | base64 | tr -d '\n')
+  signerName: kubernetes.io/kubelet-serving
+  usages:
+  - digital signature
+  - key encipherment
+  - server auth
+EOF
+
+sudo kubectl certificate approve  minio.minio-tenant-1.svc.cluster.local

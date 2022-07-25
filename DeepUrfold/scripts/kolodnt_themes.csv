@@ -1,0 +1,25 @@
+,ID,# domains,<length>,ECOD X-group,ECOD Top level,domain_name,start,end
+0,2939,627,42.4,Rossmann-like,a/b_three-layered_sandwiches,e1a9xA4,8,50
+1,11190,138,45.0,HTH,alpha_arrays,e1aisB2,1262,1996
+2,4350,105,41.1,P-loop domains-like,a/b_three-layered_sandwiches,e1a7jA1,6,43
+3,15301,91,53.6,Single-strandedright-handed beta-helix,beta_duplicates_or_obligate_multimers,e1jl5A1, 1075,1126
+4,11781,69,38.2,EF-hand,alpha_arrays,e1c7vA1, 87,121
+5,11782,50,61.3,EF-hand,alpha_arrays,e1c7vA1, 93,147
+6,2964,49,40.9,Rossmann-like,a/b_three-layered_sandwiches,e1fmcA1, 155,195
+7,12955,48,38.5,EGF-like,few_secondary_structure_elements,e1edmB1, 47,78
+8,2962,47,76.5,Rossmann-like,a/b_three-layered_sandwiches,e1fmcA1, 109,196
+9,2967,46,41.2,Rossmann-like,a/b_three-layered_sandwiches,e1fmcA1, 59,97
+10,2960,46,46.2,Rossmann-like,a/b_three-layered_sandwiches,e1fmcA1, 103,149
+11,2966,45,48.9,Rossmann-like,a/b_three-layered_sandwiches,e1fmcA1, 194,249
+12,2968,41,54.1,Rossmann-like,a/b_three-layered_sandwiches,e1fmcA1,56,123
+13,17767,41,44.8,Thioredoxin-like,mixed_a+b_and_a/b,e1jfuA1,57,102
+14,2965,41,77.7,Rossmann-like,a/b_three-layered_sandwiches,e1fmcA1, 155,249
+15,2588,35,60.6,CBS-domain,a+b_duplicates_or_obligate_multimers,e1o50A1,86,136
+16,14815,34,64.4,beta-propeller-like,beta_duplicates_or_obligate_multimers,e1erjB1,347,476
+17,4379,33,44.5,P-loop domains-like,a/b_three-layered_sandwiches,e1f2t.1,10,45
+18,16416,32,41.1,Immunoglobulin-like beta-sandwich,beta_sandwiches,e1bihA4, 357,394
+19,5391,31,55.5,Flavodoxin-like,a/b_three-layered_sandwiches,e1a04A2,9,63
+20,17768,31,45.3,Thioredoxin-like,mixed_a+b_and_a/b,e1kngA1, 150,185
+21,10266,30,71.2,Alpha-beta plaits,a+b_two_layers,e1a9nD2,11,88
+22,14861,30,40.8,beta-propeller-like,beta_duplicates_or_obligate_multimers,e1p22A1,462,497
+23,11631,30,43.8,RuvA-C,alpha_arrays,e1oqyA2,164,199

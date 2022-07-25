@@ -1,0 +1,65 @@
+apiVersion: minio.min.io/v2
+kind: Tenant
+metadata:
+  creationTimestamp: null
+  name: minio-tenant-1
+  namespace: minio-tenant-1
+scheduler:
+  name: ""
+spec:
+  certConfig: {}
+  credsSecret:
+    name: minio-tenant-1-creds-secret
+  image: minio/minio:RELEASE.2021-11-09T03-21-45Z
+  imagePullSecret: {}
+  mountPath: /export
+  pools:
+  - resources: {}
+    servers: 1
+    volumeClaimTemplate:
+      apiVersion: v1
+      kind: persistentvolumeclaims
+      metadata:
+        creationTimestamp: null
+      spec:
+        accessModes:
+        - ReadWriteOnce
+        resources:
+          requests:
+            storage: 125Gi
+        storageClassName: local-path
+      status: {}
+    volumesPerServer: 4
+  requestAutoCert: false
+  users:
+  - name: minio-tenant-1-user-1
+status:
+  availableReplicas: 0
+  certificates: {}
+  currentState: ""
+  pools: null
+  revision: 0
+  syncVersion: ""
+  usage: {}
+
+---
+apiVersion: v1
+data:
+  accesskey: ACCESS_KEY
+  secretkey: SECRET_KEY
+kind: Secret
+metadata:
+  creationTimestamp: null
+  name: minio-tenant-1-creds-secret
+  namespace: minio-tenant-1
+
+---
+apiVersion: v1
+data:
+  CONSOLE_ACCESS_KEY: ACCESS_KEY
+  CONSOLE_SECRET_KEY: SECRET_KEY
+kind: Secret
+metadata:
+  creationTimestamp: null
+  name: minio-tenant-1-user-1
+  namespace: minio-tenant-1

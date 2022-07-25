@@ -1,0 +1,23 @@
+---
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: minio-s3
+  namespace: minio-tenant-1
+
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`minio.example.com`)
+      kind: Rule
+      services:
+        - name: minio
+          port: 443
+    - match: Host(`console.minio.example.com`)
+      kind: Rule
+      services:
+        - name: minio-tenant-1-console
+          port: 9443
+  tls:
+    certResolver: tlsresolver

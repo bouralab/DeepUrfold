@@ -1,0 +1,6 @@
+log_level: INFO
+bucket_name: hsds
+server_name: bournelab HSDS
+password_file: /etc/hsds/passwd.txt
+password_salt: PASSWORD_SALT
+admin_user: jreadey@hdfgroup.org

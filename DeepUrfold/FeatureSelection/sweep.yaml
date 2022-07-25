@@ -1,0 +1,62 @@
+program: /project/ppi_workspace/BindingSitePredictor/train_lightning_model.py
+command:
+  - "singularity run --nv -B /home/ed4bu/MinkowskiEngine/MinkowskiEngine:/opt/conda/lib/python3.6/site-packages/MinkowskiEngine-0.4.2-py3.6-linux-x86_64.egg/MinkowskiEngine /project/ppi_workspace/containers/pytorch-minkowsi.simg"
+  - ${program}
+  - "--gpus 4"
+  - "--distributed_backend dp"
+method: bayes
+metric:
+  name: val_loss
+  goal: minimize
+parameters:
+  batch_size:
+    distribution: int_uniform
+    min: 1
+    max: 8
+  learning_rate:
+    distribution: log_uniform
+    min: -10
+    max: -3
+  dropout:
+    distribution: uniform
+    min: 0.0
+    max: 1.0
+  skip_connections:
+    distribution: categorical
+    values:
+      - True
+      - False
+  leakiness:
+    distribution: uniform
+    min: 0.0
+    max: 1.0
+  momentum:
+    distribution: uniform
+    min: 0.2
+    max: 1.0
+  weight_decay:
+    distribution: log_uniform
+    min: -10
+    max: -1
+  lr_decay:
+    distribution: log_uniform
+    min: -10
+    max: -1
+  unet:
+    distribution: categorical
+    values:
+      - MinkUNet14
+      - MinkUNet14A
+      - MinkUNet14B
+      - MinkUNet14C
+      - MinkUNet14D
+      - MinkUNet18
+      - MinkUNet18A
+      - MinkUNet18B,
+      - MinkUNet18D
+      - MinkUNet34
+      - MinkUNet34A
+      - MinkUNet34B
+      - MinkUNet34C
+      - MinkUNet50
+      - MinkUNet101

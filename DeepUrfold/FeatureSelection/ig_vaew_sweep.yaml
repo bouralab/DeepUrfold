@@ -1,0 +1,40 @@
+program: /home/edraizen/BindingSitePredictor/DeepUrfold/Trainers/TrainSuperfamilyVAE.py
+command:
+  - "/home/edraizen/.conda/envs/py37/bin/python"
+  - ${program}
+  - "--distributed_backend=ddp"
+  - "--superfamily=2.60.40.10"
+  - "--data-dir=/pylon5/bio200038p/edraizen/data-eppic-cath-features/"
+  - "--distributed_backend=ddp"
+  - "--num_workers=5"
+  - "--prefix=2.60.40.10"
+  - "--max_epochs=30"
+  - ${args}
+method: bayes
+early_terminate:
+  type: hyperband
+  min_iter: 3
+metric:
+  name: val_loss
+  goal: minimize
+parameters:
+  batch_size:
+    distribution: int_uniform
+    min: 16
+    max: 96
+  lr:
+    distribution: log_uniform
+    min: -10
+    max: -1
+  kernel_size:
+    distribution: int_uniform
+    min: 2
+    max: 6
+  transpose_kernel_size:
+    distribution: int_uniform
+    min: 2
+    max: 6
+  stride:
+    distribution: int_uniform
+    min: 1
+    max: 4
