@@ -19,7 +19,7 @@ To explore the results, please visit https://bournelab.org/research/DeepUrfold/
 
 ## Install
 
-Please install [Prop3D](https://github.com/bournelab/Prop3D) and this DeepUrfold repository
+Please install [Prop3D](https://github.com/bouralab/Prop3D) and this DeepUrfold repository
 
 ```
 git clone https://github.com/bouralab/Prop3D.git
@@ -77,7 +77,7 @@ hsload Prop3D.h5 $PROP3D_DATA
 ```
 Warning: this might take a while
 
-Otherwise, you can recreate the Prop3D dataset by following the [https://github.com/bournelab/Prop3D/README.md](Prop3D) instructions.
+Otherwise, you can recreate the Prop3D dataset by following the [https://github.com/bouralab/Prop3D/README.md](Prop3D) instructions.
 
 ## Training a single model
 
