@@ -22,7 +22,7 @@ To explore the results, please visit https://bournelab.org/research/DeepUrfold/
 Please install [Prop3D](https://github.com/bournelab/Prop3D) and this DeepUrfold repository
 
 ```
-git clone https://github.com/bournelab/Prop3D.git
+git clone https://github.com/bouralab/Prop3D.git
 cd Prop3D
 git submodule init
 git submodule update
@@ -32,7 +32,7 @@ python setup.py install
 and then
 
 ```
-git clone https://github.com/bournelab/DeepUrfold.git
+git clone https://github.com/bouralab/DeepUrfold.git
 cd DeepUrfold
 python setup.py install
 ```
