@@ -28,11 +28,11 @@ RUN apt-get update && apt-get install -y git
 
 
 WORKDIR /opt
-RUN git clone https://github.com/edraizen/molmimic.git
-WORKDIR /opt/molmimic
+RUN git clone https://github.com/edraizen/Prop3D.git
+WORKDIR /opt/Prop3D
 RUN python setup.py install
 WORKDIR /opt
-RUN rm -rf molmimic
+RUN rm -rf Prop3D
 
 WORKDIR /opt
 RUN git clone https://github.com/edraizen/Pytorch-LRP.git

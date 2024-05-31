@@ -1,4 +1,4 @@
-molmimic==0.0.1
+Prop3D==0.0.1
 pandarallel
 torch
 dask[dataframe]
@@ -14,15 +14,18 @@ pyarrow
 botocore==1.23.17
 boto3==1.20.7
 awscli==1.22.17
-freesasa==2.0.3.post7
+#freesasa==2.0.3.post7
 tensorboardX
-pytorch-lightning
-#git+https://github.com/PytorchLightning/pytorch-lightning.git@master --upgrade
+pytorch-lightning==1.4.9
+torchmetrics==0.5.1
 wandb
 ipython
-#ipykernel
-#Toil
 h5py
 h5pyd
 requests==2.26.0
 urllib3==1.26.7
+goatools
+requests_html
+flask
+umap-learn
+Imblearn

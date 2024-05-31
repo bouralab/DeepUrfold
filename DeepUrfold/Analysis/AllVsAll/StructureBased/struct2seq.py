@@ -12,8 +12,8 @@ from Bio.PDB.Polypeptide import three_to_one
 
 from DeepUrfold.Analysis.AllVsAll.StructureBased import StructureBasedAllVsAll
 from DeepUrfold.DataModules.DomainStructureDataModule import DomainStructureDataModule
-from molmimic.common.Structure import Structure
-from molmimic.util.pdb import remove_ter_lines
+from Prop3D.common.Structure import Structure
+from Prop3D.util.pdb import remove_ter_lines
 
 def parallel_process_domain(obj, cath_domain, pdb_file, features_file):
     return obj.process_domain(cath_domain, pdb_file, features_file)

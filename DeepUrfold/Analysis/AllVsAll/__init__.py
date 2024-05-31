@@ -15,12 +15,12 @@ import pandas as pd
 from Bio import SeqIO
 from joblib import Parallel, delayed
 
-from molmimic.parsers.cath import CATHApi
-from molmimic.parsers.muscle import Muscle
+from Prop3D.parsers.cath import CATHApi
+from Prop3D.parsers.muscle import Muscle
 
 from DeepUrfold.Analysis.StochasticBlockModel import StochasticBlockModel
 
-# n_gpus = torch.cuda.device_count()
+total_gpus = torch.cuda.device_count()
 # manager = multiprocessing.Manager()
 # AVAILABLE_GPUS = manager.list([True]*torch.cuda.device_count())
 
@@ -34,7 +34,7 @@ def get_available_gpu(obj, model_name, i, should_wait=True, wait_time=1):
     #global AVAILABLE_GPUS
     #print(model_name, i, "AVAILABLE_GPUS", AVAILABLE_GPUS, wait_time*2)
 
-    if i < obj.NJOBS:
+    if i < obj.NJOBS & obj.NJOBS<=total_gpus:
         return i
 
     if should_wait and i>0:
@@ -95,6 +95,12 @@ def parallel_infer(obj, i, model_name, model_path, combined_datatset, gpu=None):
 
     return result
 
+def parallel_completed_trained_model(obj, model_name, model_input):
+    return obj.completed_trained_model(model_name, model_input)
+
+def parallel_completed_inference(obj, model_name):
+    return obj.completed_inference(model_name)
+
 AVAILABLE_AVA_COMPARATORS = {}
 
 def get_representative_domains(superfamilies, data_dir):
@@ -149,6 +155,7 @@ class AllVsAll(object):
         self.force = force
         self.downsample_sbm = downsample_sbm
         self.cluster = cluster
+        self.clusterer = StochasticBlockModel
 
         self.id_parser = re.compile(r"cath\|4_3_0\|([a-zA-Z0-9]+)\/")
 
@@ -189,8 +196,14 @@ class AllVsAll(object):
         A path to the model or dictionary of model names and path each model
         """
         print("Train all, cores=", self.NJOBS)
-        done_sfams = {model_name:self.completed_trained_model(model_name, model_input) \
-            for model_name, model_input in self.superfamily_datasets.items()}
+        # done_sfams = {model_name:self.completed_trained_model(model_name, model_input) \
+        #     for model_name, model_input in self.superfamily_datasets.items()}
+
+        check_sfams = Parallel(n_jobs=self.NJOBS)(delayed(parallel_completed_trained_model)(\
+            self, model_name, model_input) for model_name, model_input in \
+            self.superfamily_datasets.items())
+        done_sfams = dict(zip(self.superfamily_datasets.keys(), check_sfams))
+
         num_sfams = len(done_sfams)
         done_sfams = {model_name: model for model_name, model in done_sfams.items() \
             if model is not None}
@@ -235,8 +248,13 @@ class AllVsAll(object):
         An d x s pd.DataFrame with the name of the cath domain as indices and
         superfamilies as columns
         """
-        done_sfams = {superfamily: self.completed_inference(superfamily) \
-            for superfamily in self.superfamily_datasets.keys()}
+        # done_sfams = {superfamily: self.completed_inference(superfamily) \
+        #     for superfamily in self.superfamily_datasets.keys()}
+
+        check_sfams = Parallel(n_jobs=self.NJOBS)(delayed(parallel_completed_inference)(\
+            self, superfamily) for superfamily in self.superfamily_datasets.keys())
+        done_sfams = dict(zip(self.superfamily_datasets.keys(), check_sfams))
+
         num_sfams = len(done_sfams)
         done_sfams = {model_name: infer_results for model_name, infer_results in \
             done_sfams.items() if infer_results is not None}
@@ -357,11 +375,11 @@ class AllVsAll(object):
         self.search_all(permuted_seqs)
 
     def detect_communities(self):
-        sbm = StochasticBlockModel(self.results, self.METHOD, self.MODEL_TYPE, self.DATA_INPUT,
+        clusterer = self.clusterer(self.results, self.METHOD, self.MODEL_TYPE, self.DATA_INPUT,
             self.SCORE_METRIC, increasing=self.SCORE_INCREASING)
-        sbm.find_communities(score_type=self.SCORE_FN, downsample=self.downsample_sbm, old_flare=getattr(self, 'old_flare', None))
+        clusterer.find_communities(score_type=self.SCORE_FN, downsample=self.downsample_sbm, old_flare=getattr(self, 'old_flare', None))
         with open(os.path.join(self.work_dir, f"{self.METHOD}-{self.DATA_INPUT}.tex"), "w") as f:
-            self.comparasion_table_row = sbm.make_comparison_table_row()
+            self.comparasion_table_row = clusterer.make_comparison_table_row()
             print(self.comparasion_table_row, file=f)
 
     @staticmethod

@@ -21,8 +21,8 @@ from DeepUrfold.Datasets.DomainStructureDataset import DomainStructureDataset, g
 #["3.30.310.60", "3.30.1380.10"] #, "3.10.20.30", "3.90.79.10", "3.90.420.10", "1.10.510.10"]
 #["3.40.50.300", "3.30.310.60", "3.30.1360.40", "3.30.1380.10", "3.30.230.10", "3.30.300.20", "3.30.1370.10"]#["3.10.20.30", "3.90.79.10", "3.90.420.10"] #["3.40.50.720"] #["2.60.40.10", "2.30.30.100", "2.40.50.140"]
 
-from molmimic.util.toil import createToilOptions, map_job
-from molmimic.util import getcwd
+from Prop3D.util.toil import createToilOptions, map_job
+from Prop3D.util import getcwd
 
 def split_dataset_at_level(job, level, dataset_type="ddi", data_dir=None):
     assert level in DomainStructureDataset.hierarchy, "Level ({}) not in hierarchy".format(level, DomainStructureDataset.hierarchy)

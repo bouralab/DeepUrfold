@@ -21,8 +21,8 @@ cd singularity
 cd
 singularity pull shub://edraizen/SingularityTorch
 
-git clone https://github.com/edraizen/molmimic.git
-cd molmimic
+git clone https://github.com/edraizen/Prop3D.git
+cd Prop3D
 git checkout conv-py3
 python3 -m pip install -U .
 

@@ -17,12 +17,16 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 #Must be before pytorch
-import graph_tool.all as gt
-import graph_tool as gta
+try:
+    import graph_tool.all as gt
+    import graph_tool as gta
+except (ImportError, ModuleNotFoundError):
+    print("Unable to run StochasticBlockModel without graph_tool")
+    gt = gta = None
 
 from DeepUrfold.Analysis.Clustering import Clustering
 
-from molmimic.parsers.cath import CATHApi
+from Prop3D.parsers.cath import CATHApi
 
 from pandarallel import pandarallel
 
@@ -121,6 +125,8 @@ def calculate_enrichment(feats, group_key=None, prefix=None):
     n_go = set()
     cc_go = set()
     enriched_go = []
+    print(group_key)
+    print(feats)
     for block, domains in feats.groupby(group_key):
         # go_acc = domains["go_acc"]
         # go_acc = go_acc[go_acc!=""].dropna().str.split("+", expand=True).values.flatten()
@@ -211,6 +217,8 @@ class StochasticBlockModel(Clustering):
 
     def find_communities(self, nested=True, overlap=True, deg_corr=True, kde_descriminator=False, log_odds_descriminator=False, weighted=True, score_type="elbo", force=False, prefix=None, old_flare=None, downsample=False):
         global bs
+        if gt is None:
+            raise RuntimeError("graph_tool must be installed in order to build the sctochastic block model")
 
         import numpy as np
 
@@ -265,7 +273,7 @@ class StochasticBlockModel(Clustering):
                     log_odd_thru_true_sfam = self.log_odds_descriminator.get(true_sfam)
 
                 skipped = 0
-                for model, score in row.iteritems():
+                for model, score in row.items():
                     try:
                         sfam_vertex = self.sfam_vertices[model]
                     except KeyError:
@@ -486,20 +494,21 @@ class StochasticBlockModel(Clustering):
 
             print("Plotting block model")
 
-            state.draw(
-                vertex_shape="pie",
-                vertex_pie_fractions=pv,
-                edge_color=gt.prop_to_size(state.g.ep["e_score"], power=1),
-                ecmap=(matplotlib.cm.viridis, .6),
-                eorder=state.g.ep["e_score"],
-                hedge_color="#555555",
-                hvertex_fill_color="#555555",
-                vertex_text_position="centered",
-                vertex_text=state.g.vp["v_label"],
-                output_size=[8000,8000],
-                edge_gradient=[],
-                output=f"{prefix}/{prefix}_{i}.pdf",
-                vertex_pie_colors=sns.color_palette('husl', n_colors=52)) #len(reidx_names)))
+            if force or not os.path.isfile(f"{prefix}/{prefix}_{i}.pdf"):
+                state.draw(
+                    vertex_shape="pie",
+                    vertex_pie_fractions=pv,
+                    edge_color=gt.prop_to_size(state.g.ep["e_score"], power=1),
+                    ecmap=(matplotlib.cm.viridis, .6),
+                    eorder=state.g.ep["e_score"],
+                    hedge_color="#555555",
+                    hvertex_fill_color="#555555",
+                    vertex_text_position="centered",
+                    vertex_text=state.g.vp["v_label"],
+                    output_size=[8000,8000],
+                    edge_gradient=[],
+                    output=f"{prefix}/{prefix}_{i}.pdf",
+                    vertex_pie_colors=sns.color_palette('husl', n_colors=52)) #len(reidx_names)))
 
 
         #self.state = block_model(self.g, state_args=state_args, multilevel_mcmc_args=dict(verbose=True))
@@ -563,7 +572,7 @@ class StochasticBlockModel(Clustering):
                 go_acc = pd.Series()
 
             go_acc = "+".join(go_acc)
-            print("Got go code", go_acc)
+            #print("Got go code", go_acc)
 
 
             # else:
@@ -575,14 +584,14 @@ class StochasticBlockModel(Clustering):
             result = pd.Series({"size":size, "ss":ss, "charge":charge,
                 "electrostatics":electrostatics, "conserved":conserved,
                 "go_acc":go_acc, "sfam":sfam, "cc":loc}, name=cathDomain)
-            print("result", result)
+            #print("result", result)
             return result
         print(sbm_data)
 
 
-
         if precalculated_feats is None:
-            feats = sbm_data[~sbm_data.index.str.contains("=")].apply(lambda r: get_feats(r.name, r.sfam), axis=1)
+            feats = sbm_data[~sbm_data.index.str.contains("=")]
+            feats = pd.merge(feats, feats.apply(lambda r: get_feats(r.name, r.sfam), axis=1), left_index=True, right_index=True)
         else:
             feats = precalculated_feats.rename(columns={"value":"size"}).set_index("cathDomain")
             missing = sbm_data[(~sbm_data.index.isin(feats.index))&(~sbm_data.index.str.contains("="))]
@@ -591,6 +600,7 @@ class StochasticBlockModel(Clustering):
                 feats = pd.concat((feats, missing.apply(lambda r: get_feats(r.name, r.sfam), axis=1)))
             feats = pd.merge(feats, sbm_data, left_index=True, right_index=True)
             print(feats)
+        
             # if "cc" not in feats:
             #     feats = feats.assign(cc=feats["go_acc"].apply(get_cc))
             # if "sfam" not in feats:
@@ -641,6 +651,8 @@ class StochasticBlockModel(Clustering):
 
         if "sfam_x" in feats:
             feats = feats.rename(columns={"sfam_x":"sfam"})
+
+        print(feats.sfam.drop_duplicates().dropna())
 
         sfam_full_names = pd.DataFrame([get_sfam_names(sfam) for sfam in feats.sfam.drop_duplicates().dropna()], columns=["sfam", "sfam_name"])
 

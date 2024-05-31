@@ -9,8 +9,8 @@ import numpy as np
 from Bio import SeqIO
 
 from DeepUrfold.Analysis.AllVsAll.SequenceBased.EVcouplings import EVcouplingsAllVsAll
-from molmimic.parsers.container import Container
-from molmimic.parsers.muscle import Muscle
+from Prop3D.parsers.container import Container
+from Prop3D.parsers.muscle import Muscle
 
 class DeepSequence(Container):
     IMAGE = "deepsequence" #"docker://edraizen/deepsequence"

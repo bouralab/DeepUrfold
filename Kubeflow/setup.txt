@@ -121,7 +121,7 @@ sudo kubectl krew install minio
 # prerequisity
 sudo kubectl create namespace minio-tenant-1
 sudo kubectl minio init
-sudo kubectl minio tenant create minio-tenant-1 --servers 1 --volumes 4 --capacity 500Gi --namespace minio-tenant-1 --storage-class local-path --enable-host-sharing
+sudo kubectl minio tenant create minio-tenant-2 --servers 1 --volumes 4 --capacity 500Gi --namespace minio-tenant-2 --storage-class local-path --enable-host-sharing
 
 sudo wget -O /usr/local/bin/mc https://dl.min.io/client/mc/release/linux-amd64/mc
 sudo chmod +x /usr/local/bin/mc

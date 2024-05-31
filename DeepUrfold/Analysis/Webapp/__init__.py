@@ -104,8 +104,8 @@ def download_svg(feature=["all"], port=8000):
         r.html.render(wait=4, sleep=4)
 
         svg = r.html.find('#deepurfold_div', first=True).find('svg', first=True)
-
-        assert "circle" in  r.html.find('#deepurfold_div', first=True).html
+        import pdb; pdb.set_trace()
+        assert "circle" in r.html.find('#deepurfold_div', first=True).html
         assert "circle" in svg.html
 
         legend = svg.find('g.legendSequential', first=True)

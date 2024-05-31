@@ -2,12 +2,15 @@ import os
 import argparse
 import glob
 from datetime import datetime
+import subprocess
 
 import torch
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint, Callback
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.utilities import rank_zero_only
+
 #setattr(WandbLogger, 'name', property(lambda self: self._name))
 
 from scipy.stats import special_ortho_group
@@ -31,6 +34,7 @@ class StructureRotater(Callback):
     #     self.dm.test_dataset.set_rotation_matrix(self.rvs)
 
     def on_train_epoch_start(self, trainer, pl_module):
+        #self.rvs = special_ortho_group.rvs(3)
         self.dm.train_dataset.set_rotation_matrix(self.rvs)
 
     def on_validation_epoch_start(self, trainer, pl_module):
@@ -38,6 +42,22 @@ class StructureRotater(Callback):
 
     def on_test_epoch_start(self, trainer, pl_module):
         self.dm.test_dataset.set_rotation_matrix(self.rvs)
+
+class HSDSRestarter(Callback):
+    """Bug with HSDS, restart it after each epoch?"""
+    @rank_zero_only
+    def restart_hsds(self):
+        subprocess.call("sudo systemctl restart k3s", shell=True)
+        subprocess.call("sudo kubectl get pods | cut -d' ' -f1 | xargs -I {} sudo kubectl delete pod/{}", shell=True)
+
+    def on_train_epoch_start(self, trainer, pl_module):
+        self.restart_hsds()
+
+    def on_validation_epoch_start(self, trainer, pl_module):
+        self.restart_hsds()
+
+    def on_test_epoch_start(self, trainer, pl_module):
+        self.restart_hsds()
 
 class DomainStructureTrainer(object):
     DATAMODULE = DomainStructureDataModule
@@ -83,13 +103,7 @@ class DomainStructureTrainer(object):
             if "Distributed" in self.DATAMODULE.__name__:
                 raise RuntimeError("Set data_dir to HSDS h5 file")
             elif not os.path.isdir(self.hparams.data_dir):
-                if os.path.isdir("./data_eppic_cath_features"):
-                    self.hparams.data_dir = "./data_eppic_cath_features"
-                elif os.path.isdir("./data-eppic-cath-features"):
-                    self.hparams.data_dir = "./data-eppic-cath-features"
-                else:
-                    raise RuntimeError(f"Cannot find data_dir '{self.hparams.data_dir}'")
-            #self.hparams.data_dir = "/project/ppi_workspace/data_eppic_cath_features"
+                raise RuntimeError(f"Cannot find data_dir '{self.hparams.data_dir}'")
 
         #Create Data Module
         self.data_module = self.DATAMODULE(self.hparams)
@@ -126,7 +140,10 @@ class DomainStructureTrainer(object):
             #Create nw model
             self.model = self.MODEL(self.hparams)
 
-        kwds["callbacks"] = [StructureRotater(self.data_module)]
+        kwds["callbacks"] = [
+            StructureRotater(self.data_module),
+            HSDSRestarter()
+        ]
 
         if not self.hparams.no_early_stopping:
             kwds["callbacks"].append(EarlyStopping(monitor='val_loss', patience=8))
@@ -147,6 +164,7 @@ class DomainStructureTrainer(object):
         #     #print(kwds["checkpoint_callback"])
 
         #Create trainier and train model
+        #self.cli = LightningCLI(self.model, self.data_module, run=False)
         self.trainer = Trainer.from_argparse_args(self.hparams, **kwds)
 
         if self.last_checkpoint_file is not None: #hasattr(self.hparams, "resume_from_checkpoint") and os.path.exists(self.hparams.resume_from_checkpoint):
@@ -179,7 +197,7 @@ class DomainStructureTrainer(object):
             if num_nodes>1:
                 batch_size = 1 #self.parser.get_default('batch_size')/2
             else:
-                batch_size = 1 #self.parser.get_default('batch_size')
+                batch_size = self.parser.get_default('batch_size')
         else:
             distributed_backend = None
             batch_size = self.parser.get_default('batch_size')

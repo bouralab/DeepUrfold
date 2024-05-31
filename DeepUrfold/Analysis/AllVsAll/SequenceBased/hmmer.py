@@ -6,7 +6,7 @@ import pandas as pd
 
 from DeepUrfold.Analysis.AllVsAll.SequenceBased import SequenceBasedAllVsAll
 from DeepUrfold.Analysis.AllVsAll.SequenceBased.EVcouplings import EVcouplingsAllVsAll
-from molmimic.parsers.hmmer import HMMER
+from Prop3D.parsers.hmmer import HMMER
 
 class HmmerAllVsAll(SequenceBasedAllVsAll):
     METHOD = "HMMER"

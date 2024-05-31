@@ -9,7 +9,7 @@ from Bio.PDB.Polypeptide import three_to_one
 
 from DeepUrfold.Analysis.AllVsAll.StructureBased import StructureBasedAllVsAll
 from DeepUrfold.DataModules.DomainStructureDataModule import DomainStructureDataModule
-from molmimic.parsers.superpose.tmalign import TMAlign
+from Prop3D.parsers.superpose.tmalign import TMAlign
 
 class TMAlignAllVsAll(StructureBasedAllVsAll):
     NJOBS = 60

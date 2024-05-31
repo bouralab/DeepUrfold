@@ -9,7 +9,7 @@ from Bio.PDB.Polypeptide import three_to_one
 
 from DeepUrfold.Analysis.AllVsAll.SequenceBased import SequenceBasedAllVsAll
 from DeepUrfold.DataModules import DomainStructureDataModule
-from molmimic.parsers.USEARCH import AllPairsLocal, AllPairsGlobal
+from Prop3D.parsers.USEARCH import AllPairsLocal, AllPairsGlobal
 
 class UClustAllVsAll:
     NJOBS = 4

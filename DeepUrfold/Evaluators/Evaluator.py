@@ -123,6 +123,8 @@ class DomainStructureEvaluator(object):
         #print(self.hparams)
 
         #self.model.freeze()
+        if self.hparams.batch_size != self.data_module.h_params.batch_size:
+            self.hparams.batch_size = self.data_module.h_params.batch_size
 
         self.hparams.samplewise_loss = not self.hparams.batchwise_loss
 
@@ -134,7 +136,7 @@ class DomainStructureEvaluator(object):
             print("Running LRP with aggregators", self.hparams.atomic_relevance)
             self.atomic_relevance = AtomicRelevance(
                 self.hparams.features,
-                os.path.join(self.hparams.data_dir, "cath_features"), #*self.hparams.superfamily.split(".")),
+                self.hparams.data_dir, #*self.hparams.superfamily.split(".")),
                 self.hparams.atomic_relevance[0],
                 self.hparams.atomic_relevance[1],
                 volume=self.hparams.input_size)
@@ -275,6 +277,10 @@ class DomainStructureEvaluator(object):
                            const=True, default=False)
         self.parser.add_argument("--gt0", type=str2bool, nargs='?',
                            const=True, default=False)
+        
+        self.parser.add_argument("--force_rotate", type=str2bool, nargs='?',
+                           const=True, default=False)
+        self.parser.add_argument("--n_copies_per_domain", type=int, default=1)
 
         metrics = self.parser.add_mutually_exclusive_group(required=True)
         metrics.add_argument("--classification", type=str2bool, nargs='?',

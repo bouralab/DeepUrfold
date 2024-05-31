@@ -18,8 +18,8 @@ from DeepUrfold.util import str2boolorval
 import torch
 
 
-class DeepUrfoldAllVsAll(StructureBasedAllVsAll):
-    NJOBS = 1
+class DeepUrfoldOneModelAllVsAll(StructureBasedAllVsAll):
+    NJOBS = 16
     METHOD = "DeepUrfold"
     DATA_INPUT = "CATH S35"
     SCORE_INCREASING = False
@@ -28,21 +28,15 @@ class DeepUrfoldAllVsAll(StructureBasedAllVsAll):
     SCORE_FN = "negative_log"
     GPU = True
 
-    def __init__(self, superfamilies, data_dir, hparams, latent=False, all=False, 
-      classification=None, lrp=False, permutation_dir=None, work_dir=None, force=False, 
-      result_dir="", result_dir2=None, downsample_sbm=False, cluster=True,
-      test_domains=None, force_rotate=False, n_copies_per_domain=1):
+    def __init__(self, superfamilies, data_dir, hparams, latent=False, all=False, classification=None, lrp=False, permutation_dir=None, work_dir=None, force=False, result_dir="", result_dir2=None):
         self.raw_hparams = copy.deepcopy(hparams)
-        super().__init__(superfamilies, data_dir, hparams, permutation_dir=permutation_dir, work_dir=work_dir, force=force, downsample_sbm=downsample_sbm, cluster=cluster)
+        super().__init__(superfamilies, data_dir, hparams, permutation_dir=permutation_dir, work_dir=work_dir, force=force, downsample_sbm=False, cluster=False)
         self.latent = latent
         self.all = all
         self.classification = classification
         self.lrp = lrp
         self.result_dir = result_dir
         self.result_dir2 = result_dir2
-        self.test_domains = test_domains
-        self.force_rotate = force_rotate
-        self.n_copies_per_domain = n_copies_per_domain
 
         if result_dir2 is not None:
             flare = os.path.join(result_dir2, "flare.csv")
@@ -71,99 +65,30 @@ class DeepUrfoldAllVsAll(StructureBasedAllVsAll):
             else:
                 raise RuntimeError("classification must be [True, 'auroc', 'auprc']")
 
-    def train_gpu(self, i, model_name, model_input, gpu=0):
-        out_dir = os.path.join(self.result_dir, model_name)
+    def train_all(self, *args, **kwds):
+        """Not implemented
+        
+        
+        """
+        completed_model = Path(self.result_dir) / "last.ckpt"
+        if completed_model.is_file() and not self.force:
+            return completed_model
 
-        os.makedirs(out_dir, exist_ok=True)
+        subprocess.call([
+            "python", "-m", "DeepUrfold.Trainers.DistributedTrainSuperfamilyVAE",
+            "--superfamily", *self.superfamily_datasets.keys(),
+            "--data_dir", "/home/ed4bu/deepurfold-paper-2.h5",
+            "--under_sample",
+            "--gpu", "4",
+            "--batch_size", "96",
+            "--num_workers", "8",
+            "--no_early_stopping"
+        ])
 
-        command = [
-            sys.executable,
-            "-m", "DeepUrfold.Trainers.DistributedTrainSuperfamilyVAE",
-            "--superfamily", model_name,
-            "--data_dir", self.raw_hparams.data_dir, #/home/ed4bu/deepurfold-paper-2.h5",
-            "--features", *self.raw_hparams.features, #"H;HD;HS;C;A;N;NA;NS;OA;OS;SA;S;Unk_atom__is_helix;is_sheet;Unk_SS__residue_buried__is_hydrophobic__pos_charge__is_electronegative",
-            "--feature_groups", *self.raw_hparams.feature_groups, #"Atom Type;Secondary Structure;Solvent Accessibility;Hydrophobicity;Charge;Electrostatics",
-            "--accelerator", 'gpu',
-            "--batch_size", "255",
-            "--num_workers", "60",
-            "--prefix", model_name,
-            "--max_epochs=30",
-            "--no_early_stopping",
-            "--lr=0.2",
-            "--ignore_splits_on_error", "True"
-        ]
+        if not completed_model.is_file():
+            raise RuntimeError("Unable to train model")
 
-        if self.NJOBS == 1:
-            command += ["--gpus", "4", "--strategy", 'ddp']
-        else:
-            command += ["--gpus", f"{gpu},"]
-
-        model_file = os.path.join(out_dir, f"last.ckpt")
-
-        if os.path.isfile(model_file):
-            #It likeley failed, start from last epoch
-            command += [
-                #"--resume_from_checkpoint", model_file
-                "--reload_checkpoint",
-                "--last_checkpoint_file", model_file
-            ]
-
-        print("Running command:", command)
-        subprocess.call(command, cwd=out_dir)
-
-        return model_name, model_file
-
-    def completed_trained_model(self, model_name, model_input, result_dir=None):
-        print("CHeck if train file exists", model_name, result_dir)
-        model_path = Path(self.result_dir) / model_name if result_dir is None else Path(result_dir) / model_name
-        model_file = model_path / "last.ckpt"
-
-        if not model_file.exists():
-            if result_dir is None and self.result_dir2 is not None:
-                #Use other model, not recommended
-                done = self.completed_trained_model(model_name, model_input, result_dir=self.result_dir2)
-                if done is None:
-                    assert 0, Path(self.result_dir2) / model_name / "last.ckpt"
-                return done
-            else:
-                #start training
-                return None
-
-        last_epoch = 0
-        best_model = list(model_path.glob("DistributedDomainStructureDataset-*.ckpt"))
-        if len(best_model)>0:
-            best_model = max([int(f.stem.split("epoch=")[-1].split("-")[0]) for f in best_model])
-            if best_model != 29:
-                model = torch.load(model_file, map_location="cpu")
-                last_epoch = model["epoch"]
-                del model
-            else:
-                last_epoch = 29
-        else:
-            #Only last exists, use it
-            #import pdb; pdb.set_trace()
-            return model_file
-
-
-        if last_epoch >= 29: #os.path.isfile(model_file):
-            #Check newly trained models
-            return model_file
-        else:
-            if result_dir is None and self.result_dir2 is not None:
-                #Use model, not recommended
-                return self.completed_trained_model(model_name, model_input, result_dir=self.result_dir2)
-            else:
-                #Resume training
-                return None
-
-                old_out_dir = "/media/smb-rivanna/ed4bu/UrfoldServer/urfold_runs/superfamilies_for_paper/"
-                old_model_file = os.path.join(old_out_dir, model_name, "last.ckpt") #$OCWD/$sfam_model/last.ckpt
-                if os.path.isfile(old_model_file):
-                    #Check newly trained models
-                    return old_model_file
-                else:
-                    print(model_name, "DNE!!!!")
-                    return None
+        return completed_model
 
     def completed_inference(self, model_name, result_dir=None):
         results_file = os.path.join(self.result_dir, model_name) if result_dir is None else os.path.join(result_dir, model_name)
@@ -228,12 +153,15 @@ class DeepUrfoldAllVsAll(StructureBasedAllVsAll):
 
         return results
 
-    def infer_gpu(self, i, model_name, model_path, combined_dataset, gpu=0):
+    def infer_all(self, model_path, combined_dataset, gpu=0):
+        print(combined_dataset)
+
         distances = None
         combined_dataset_ = combined_dataset
 
         #out_dir = "/media/smb-rivanna/ed4bu/UrfoldServer/urfold_runs/superfamilies_for_paper/"
-        out_dir = Path(self.result_dir) / model_name
+        out_dir = Path(self.result_dir) / "results"
+        out_dir.mkdir()
 
         print("ou_dir", out_dir)
         print("model_path", model_path)
@@ -311,17 +239,11 @@ class DeepUrfoldAllVsAll(StructureBasedAllVsAll):
                 "--superfamily", model_name,
             ]
         else:
-            if self.test_domains is not None:
-                domains = self.test_domains
-            else:
-                domains = combined_dataset_.cathDomain.tolist()
             command = [
                 sys.executable,
                 "-m", "DeepUrfold.Evaluators.EvaluateDistrubutedDomainStructureVAE",
                 "--superfamily", *combined_dataset_.superfamily.drop_duplicates().tolist(),
-                "--domains", *domains, #*combined_dataset_.cathDomain.tolist(),
-                "--force_rotate", str(self.force_rotate),
-                "--n_copies_per_domain", str(self.n_copies_per_domain),
+                "--domains", *combined_dataset_.cathDomain.tolist(),
             ]
 
         command += [
@@ -331,11 +253,11 @@ class DeepUrfoldAllVsAll(StructureBasedAllVsAll):
             # "--domains", *combined_dataset_.cathDomain.tolist(),
             "--data_dir", self.raw_hparams.data_dir, #/home/ed4bu/deepurfold-paper-2.h5",
             "--checkpoint", os.path.abspath(model_path),
-            "--features", "H;HD;HS;C;A;N;NA;NS;OA;OS;SA;S;Unk_atom__is_helix;is_sheet;Unk_SS__residue_buried__is_hydrophobic__pos_charge__is_electronegative", #f"\"{self.raw_hparams.features}\"", #
-            "--feature_groups", "Atom Type;Secondary Structure;Solvent Accessibility;Hydrophobicity;Charge;Electrostatics", #f"\"{self.raw_hparams.feature_groups}\"", #
+            "--features", "H;HD;HS;C;A;N;NA;NS;OA;OS;SA;S;Unk_atom__is_helix;is_sheet;Unk_SS__residue_buried__is_hydrophobic__pos_charge__is_electronegative",
+            "--feature_groups", "Atom Type;Secondary Structure;Solvent Accessibility;Hydrophobicity;Charge;Electrostatics",
             "--accelerator", 'gpu',
             "--gpu", f"{gpu},",
-            "--batch_size", "500",
+            "--batch_size", "128",
             "--num_workers", "60",
             "--batchwise_loss", "False",
         ] + command_tail
@@ -368,17 +290,12 @@ class DeepUrfoldAllVsAll(StructureBasedAllVsAll):
             result = np.array([np.nan]*self.representative_domains)
 
         if self.latent and self.all:
-            print(range(result.shape[1]))
-            print(len(labels), labels)
-            if self.force_rotate and self.n_copies_per_domain > 1:
-                labels = [f"{l}_rot{i+1}" for l in labels for i in range(self.n_copies_per_domain)]
             distances = pd.DataFrame(result, columns=range(result.shape[1]), index=labels) #self.representative_domains)
 
-            if set(self.representative_domains["cathDomain"]) == set(labels):
-                #Reorder array based on CATH Reps
-                distances = distances.loc[self.representative_domains["cathDomain"]]
-                distances.reset_index().to_csv(os.path.join(out_dir, f"{label}.csv"))
-                distances = pd.Series(list(distances.values), name=model_name, index=self.representative_domains["cathDomain"])
+            #Reorder array based on CATH Reps
+            distances = distances.loc[self.representative_domains["cathDomain"]]
+            distances.reset_index().to_csv(os.path.join(out_dir, f"{label}.csv"))
+            distances = pd.Series(list(distances.values), name=model_name, index=self.representative_domains["cathDomain"])
         else:
             distances = pd.Series(result, name=model_name, index=self.representative_domains["cathDomain"])
             distances.to_csv(os.path.join(out_dir, f"{label}.csv"))
@@ -429,25 +346,6 @@ class DeepUrfoldAllVsAll(StructureBasedAllVsAll):
 
         print(distances)
         return model_name, distances
-
-    def infer_all(self, models, combined_dataset):
-        """Convert results from nxmx1024 to nxmx1 with umap
-        """
-        results = super().infer_all(models, combined_dataset)
-
-        if self.latent and self.all:
-            import umap
-
-            for model in results:
-                raw_embedding = np.stack(results[model].values)
-                embedding = umap.UMAP(n_components=1).fit_transform(raw_embedding)
-                results[model] = embedding
-
-        if self.classification == "validation":
-            self.combine_validation_latex()
-            sys.exit(0)
-
-        return results
 
     def combine_validation_latex(self):
         from zipfile import ZipFile
@@ -544,17 +442,12 @@ if __name__ == "__main__":
     parser.add_argument("--result-dir", default=os.getcwd())
     parser.add_argument("--result-dir2", default=None)
     parser.add_argument("-p", "--permutation_dir", default="/home/bournelab/urfold_runs/multiple_loop_permutations/sh3_3", required=False)
-    parser.add_argument("--test_domains", default=None, nargs="+")
-    parser.add_argument("--force_rotate", action="store_true", default=False)
-    parser.add_argument("--n_copies_per_domain", type=int, default=1)
     parser.add_argument("-f", "--force", action="store_true")
     parser.add_argument("-l", "--latent", action="store_true")
     parser.add_argument("--single_model_umap", action="store_true")
     parser.add_argument("-c", "--classification", type=partial(str2boolorval, choices=["auroc", "auprc", "validation"]), nargs='?',
                        const=True, default=None)
     parser.add_argument("--lrp", action="store_true")
-    parser.add_argument("--downsample_sbm", action="store_true")
-    parser.add_argument("--no-cluster", default=False, action="store_true")
     parser.add_argument("ava_superfamily", nargs="+")
     parser = DistributedDomainStructureDataModule.add_data_specific_args(parser, eval=True)
     parser.set_defaults(
@@ -562,7 +455,7 @@ if __name__ == "__main__":
         all_domains=True)
     args = parser.parse_args()
     print(args)
-    runner = DeepUrfoldAllVsAll(
+    runner = DeepUrfoldOneModelAllVsAll(
         args.ava_superfamily,
         args.data_dir,
         args,
@@ -574,10 +467,6 @@ if __name__ == "__main__":
         work_dir=args.work_dir,
         force=args.force,
         result_dir=args.result_dir,
-        result_dir2=args.result_dir2,
-        downsample_sbm=args.downsample_sbm,
-        cluster=not args.no_cluster,
-        test_domains=args.test_domains,
-        force_rotate=args.force_rotate,
-        n_copies_per_domain=args.n_copies_per_domain)
+        result_dir2=args.result_dir2
+    )
     runner.run()

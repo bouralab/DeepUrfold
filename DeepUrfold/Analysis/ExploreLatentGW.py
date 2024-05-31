@@ -2,70 +2,37 @@ import os
 import re
 import itertools as it
 from pathlib import Path
-import pickle
 
 import umap
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
 from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
-from sklearn.metrics import mean_squared_error, explained_variance_score
 import seaborn as sns
 import matplotlib.pyplot as plt
 
 import h5pyd
-from tqdm import tqdm
-from joblib import Parallel, delayed
+
 
 from DeepUrfold.Analysis.AllVsAll import get_representative_domains
 
 import torch
 
-try:
-    import ot
-except (ImportError, ModuleNotFoundError):
-    print("Unable to run optimal transport without POT package")
-    ot = None
-
 class ExploreLatent():
     @staticmethod
-    def reduce(*superfamilies, result_dir=None, data_dir=None, plot=True, method="umap", prefix="ExploreLatent", extra_features=None, seperate_sfams=False, optimal_transport=None, ot_combine_mode=None, domain_superfamily_mapping=None, use_pickle=False, pickle_file=None, cosine=False, mahalanobis=False, umap_nneighbors=15, umap_min_dist=0.1, combined_model=False):
+    def reduce(*superfamilies, result_dir=None, data_dir=None, plot=True, method="umap", prefix="UMAP", extra_features=None, seperate_sfams=False, domain_superfamily_mapping=None):
         assert result_dir is not None
         assert data_dir is not None
-        assert method in ["umap", "pca", "pca-all", "t-sne", "umap-all"]
+        assert method in ["umap", "pca", "t-sne"]
 
-        if umap_nneighbors != 15 and "umap" in method.lower():
-            prefix += f"-umapneigh{umap_nneighbors}"
-
-        spread = 1.
-        if umap_min_dist != 0.1 and "umap" in method.lower():
-            prefix += f"-umapdist{umap_min_dist}"
-            if umap_min_dist>=1:
-                spread = umap_min_dist+1
-
-        if cosine:
-            metric = "cosine"
-            prefix += "-cosine"
-            metric_kwds = None
-        elif mahalanobis:
-            metric = "mahalanobis"
-            prefix += "-mahalanobis"
-            metric_kwds = {"n_jobs":20}
-            metric_kwds = None
-        else:
-            metric = "euclidean"
+        prefix = f"GW-{prefix}"
 
         if method.lower() == "umap":
-            reducer = umap.UMAP(n_components=2, metric=metric, n_neighbors=umap_nneighbors, min_dist=umap_min_dist, metric_kwds=metric_kwds)
-        elif method.lower() == "umap-all":
-            reducer = umap.UMAP(n_components=10, metric=metric, n_neighbors=umap_nneighbors, min_dist=umap_min_dist, metric_kwds=metric_kwds)
+            reducer = umap.UMAP(n_components=2)
         elif method.lower() == "pca":
             reducer = PCA(n_components=2)
-        elif method.lower() == "pca-all":
-            reducer = PCA(n_components=1024)
         elif method.lower() == "t-sne":
-            reducer = TSNE(n_components=2, metric=metric)
+            reducer = TSNE(n_components=2)
 
         if extra_features is not None and not isinstance(extra_features, (list,tuple)):
             extra_features = [extra_features]
@@ -86,20 +53,9 @@ class ExploreLatent():
             else:
                 reps_domain_and_superfamilies = None
 
-            if not combined_model:
-                latent_dirs = [result_dir / superfamily for superfamily in superfamilies]
-            else:
-                latent_dirs = [result_dir]
-
-            print("latent_dirs", latent_dirs)
-
-            for latent_dir in latent_dirs: #superfamily in superfamilies:
+            for superfamily in superfamilies:
                 #if superfamily in ["3.40.50.300", "1.10.510.10"]: continue
-                result_file = latent_dir / "latent.csv" #result_dir / superfamily / "latent.csv"
-
-                superfamily = latent_dir.name
-                print("SFAM", superfamily)
-
+                result_file = result_dir / superfamily / "latent.csv"
                 if not result_file.exists():
                     assert 0
 
@@ -123,203 +79,34 @@ class ExploreLatent():
                 elif "cathDomain" not in results:
                     raise KeyError
 
-                if not seperate_sfams and not combined_model:
+                if not seperate_sfams:
                     #Get only latent space from superfamily
                     sfam_latent = results[results["superfamily"] == superfamily].set_index(["cathDomain", "superfamily"])
                 else:
                     sfam_latent = results.set_index(["cathDomain", "superfamily"])
 
-                if len(superfamilies) == 1:
-                    #Add new superfamilies results as new rows
-                    if all_latent is None:
-                        all_latent = sfam_latent
-                    else:
-                        all_latent = pd.concat((all_latent, sfam_latent))
-                elif len(superfamilies) > 1 and (optimal_transport is None or not optimal_transport):
-                    #Add new superfamilies results as new cols
-                    if not combined_model:
-                        sfam_latent = sfam_latent.rename(columns=
-                            {str(idx):f"{idx}_{superfamily}" for idx in range(1024)})
-                    if all_latent is None:
-                        all_latent = sfam_latent
-                    else:
-                        print("combining", superfamily)
-                        all_latent = pd.concat((all_latent, sfam_latent), axis=1)
+                if reduce_first:
+                    sfam_latent.values = reducer.fit_transform(sfam_latent.values)
+
+
+                if all_latent is None:
+                    all_latent = sfam_latent
                 else:
-                    if ot_combine_mode != "haddamard":
-                        if not combined_model:
-                            sfam_latent = sfam_latent.rename(columns=
-                                {str(idx):f"{idx}_{superfamily}" for idx in range(1024)})
+                    all_latent = pd.concat((all_latent, sfam_latent))
 
+            all_latent.to_hdf(f"{prefix}-{method}-all.h5", "table")
 
-                    if all_latent is None:
-                        #First sfam is set as target
-                        target_sfam = sfam_latent
-                        all_latent = sfam_latent
-                        
-                    else:
-                        if ot_combine_mode in ["haddamard", "contract"]:
-                            # Sinkhorn Transport with Group lasso regularization l1l2
-                            ot_l1l2 = ot.da.SinkhornL1l2Transport(reg_e=1e-1, reg_cl=2e0, max_iter=20, verbose=True)
-                            ot_l1l2.fit(Xs=sfam_latent.values, ys=np.ones(sfam_latent.shape[0]), Xt=target_sfam.values)
-                            transp_sfam_latent = ot_l1l2.transform(Xs=sfam_latent)
-                            
-                            if ot_combine_mode == "haddamard":
-                                all_latent = all_latent * transp_sfam_latent
-                            elif ot_combine_mode == "contract":
-                                new_mat = []
-                                for (_, emb1), emb2 in zip(all_latent.iterrows(), transp_sfam_latent):
-                                    logits = torch.einsum('i c, j c -> i j', torch.from_numpy(emb1.values), torch.from_numpy(emb2))
-                                    new_mat.append(logits.flatten().numpy())
-                                all_latent = pd.DataFrame(new_mat, index=all_latent.index, columns=list(range(new_mat[0].shape[1])))
-                                    
-                        else:
-                            print("combining", superfamily)
-                            transp_sfam_latent = pd.DataFrame(transp_sfam_latent, index=sfam_latent.index, columns=sfam_latent.columns)
-                            all_latent = pd.concat((all_latent, transp_sfam_latent), axis=1)
+            all_latent = all_latent.reset_index()
+            sfam_groups = all_latent.group_by("superfamily")
+            largest_sfam = max(sfam_groups.groups.keys(), key=lambda x: len(sfam_groups.groups[x]))
 
-            #all_latent.to_hdf(f"{prefix}-{method}-all.h5", "table")
-
-            # if method.lower() == "umap-all":
-            #     reducer = umap.UMAP(n_components=len(all_latent.values)-1)
-
-            if isinstance(pickle_file, bool):
-                pickle_file = Path(f"{prefix}-{method}-reducer-model.pickle")
-            elif isinstance(pickle_file, str):
-                pickle_file = Path(pickle_file)
-
-            if use_pickle and isinstance(pickle_file, Path) and pickle_file.is_file():
-                with pickle_file.open('rb') as f:
-                    reducer = pickle.load(f)
-                embedding = reducer.transform(all_latent.values)
-            else:
-                if False and len(superfamilies)==1 and len(domain_superfamily_mapping.superfamily.drop_duplicates()) > 1:
-                    small_latent = all_latent.reset_index()
-                    small_latent = small_latent[small_latent.superfamily==superfamilies[0]].set_index(["cathDomain", "superfamily"])
-                    print(small_latent)
-                    embedding = reducer.fit_transform(small_latent.values)
-                    index = small_latent.index
-                else:
-                    embedding = reducer.fit_transform(all_latent.values)
-                    index=all_latent.index
-                pickle_file = Path(f"{prefix}-{method}-reducer-model.pickle")
-                with pickle_file.open('wb') as f:
-                    pickle.dump(reducer, f)
-
-            embedding_df = pd.DataFrame(embedding, columns=range(embedding.shape[1]), index=index)
-            embedding_df.to_csv(f"{prefix}-{method}-embedding-values.csv")
-
-            if method.lower() == "pca-all":
-                scree = pd.DataFrame(
-                    {
-                        "Pricipal Component":np.arange(reducer.n_components_)+1,
-                        "Proportion of Variance Explained":reducer.explained_variance_ratio_
-                    })
-
-                sns.lineplot(data=scree, x="Pricipal Component", y="Proportion of Variance Explained",
-                             estimator=None, markers=True, dashes=False)
-                plt.title(f"Scree plot of Explained Varaince\n({reducer.n_components_} components)")
-                plt.savefig(f"{prefix}-{method}-pca-scree.png", dpi=600, bbox_inches="tight")
-                plt.savefig(f"{prefix}-{method}-pca-scree.pdf", dpi=600, bbox_inches="tight")
-                plt.clf()
-
-                sns.lineplot(data=scree[scree["Pricipal Component"]<11], x="Pricipal Component", y="Proportion of Variance Explained",
-                             estimator=None, markers=True, dashes=False)
-                plt.title(f"Scree plot of Explained Varaince\n({reducer.n_components_} components)")
-                plt.savefig(f"{prefix}-{method}-pca-scree-small.png", dpi=600, bbox_inches="tight")
-                plt.savefig(f"{prefix}-{method}-pca-scree-small.pdf", dpi=600, bbox_inches="tight")
-
-                #scree.to_csv(f"{prefix}-{method}-pca-scree.csv")
-                test_indices = np.random.choice(embedding.shape[0]-1, size=(10,), replace=False)
-                test_true = all_latent.values[test_indices]
-
-                def reduce_pca_comp(num_components):
-                    reducer = PCA(n_components=num_components)
-                    embedding = reducer.fit_transform(all_latent.values)
-                    #test_embeddings = embedding[:10]
-                    inv_transformed_points = reducer.inverse_transform(embedding[test_indices])
-                    print(inv_transformed_points)
-                    print(inv_transformed_points.shape)
-                    mse = mean_squared_error(test_true, inv_transformed_points, multioutput="raw_values")
-                    #dim_mse.append(mse.mean())
-                    print(num_components, mse.mean())
-                    #evs = explained_variance_score(test_true, inv_transformed_points, multioutput="raw_values")
-                    #dim_evs.append(evs.mean())
-
-                    return mse.mean()#, evs.mean()
+            for sfam_group_name, sfam_group_df in sfam_groups:
+                if sfam_group_name == largest_sfam: continue
                 
 
-                mse_ = Parallel(n_jobs=3)(delayed(reduce_pca_comp)(nc) for nc in tqdm(range(1,10)))
-                mse = np.zeros(len(scree))
-                mse[:len(mse_)]+=mse_
-                
-                scree = scree.assign(**{"Mean Square Error": mse})
+            embedding = reducer.fit_transform(all_latent.values)
 
-                plt.clf()
-
-                sns.lineplot(data=scree.iloc[:len(mse_)], x="Pricipal Component", y="Mean Square Error",
-                             estimator=None, markers=True, dashes=False)
-                plt.title(f"Scree plot of Mean Square Error\n({len(mse_)} dimensions)")
-                plt.savefig(f"{prefix}-{method}-pca-mse.png", dpi=600, bbox_inches="tight")
-                plt.savefig(f"{prefix}-{method}-pca-mse.pdf", dpi=600, bbox_inches="tight")
-                plt.clf()
-
-                return
-            
-            if method.lower() == "umap-all":
-                test_indices = np.random.choice(embedding.shape[0]-1, size=(10,), replace=False)
-                test_embeddings = embedding[test_indices]
-
-                test_true = all_latent.values[test_indices]
-                dim_mse = []
-                dim_evs = []
-                
-                def reduce_umap_comp(num_components):
-                    reducer = umap.UMAP(n_components=num_components, metric=metric, n_neighbors=umap_nneighbors, min_dist=umap_min_dist, metric_kwds=metric_kwds)
-                    embedding = reducer.fit_transform(all_latent.values)
-                    #test_embeddings = embedding[:10]
-                    inv_transformed_points = reducer.inverse_transform(embedding[test_indices])
-                    print(inv_transformed_points)
-                    print(inv_transformed_points.shape)
-                    mse = mean_squared_error(test_true, inv_transformed_points, multioutput="raw_values")
-                    #dim_mse.append(mse.mean())
-                    print(num_components, mse.mean())
-                    evs = explained_variance_score(test_true, inv_transformed_points, multioutput="raw_values")
-                    #dim_evs.append(evs.mean())
-
-                    return mse.mean(), evs.mean()
-                
-
-                results = Parallel(n_jobs=3)(delayed(reduce_umap_comp)(nc) for nc in tqdm(range(2,7)))
-                dim_mse, dim_evs = zip(*results)
-
-
-                scree = pd.DataFrame(
-                    {
-                        "UMAP Dimension":np.arange(len(dim_mse))+2,
-                        "Mean Square Error":dim_mse,
-                        "Explained Variance":dim_evs
-                    })
-
-                sns.lineplot(data=scree, x="UMAP Dimension", y="Mean Square Error",
-                             estimator=None, markers=True, dashes=False)
-                plt.title(f"Scree plot of Mean Square Error\n({len(dim_mse)} dimensions)")
-                plt.savefig(f"{prefix}-{method}-umap-mse.png", dpi=600, bbox_inches="tight")
-                plt.savefig(f"{prefix}-{method}-umap-mse.pdf", dpi=600, bbox_inches="tight")
-                plt.clf()
-
-                sns.lineplot(data=scree, x="UMAP Dimension", y="Explained Variance",
-                             estimator=None, markers=True, dashes=False)
-                plt.title(f"Scree plot of Explained Variance\n({len(dim_mse)} dimensions)")
-                plt.savefig(f"{prefix}-{method}-umap-var.png", dpi=600, bbox_inches="tight")
-                plt.savefig(f"{prefix}-{method}-umap-var.pdf", dpi=600, bbox_inches="tight")
-                plt.clf()
-
-                scree.to_csv(f"{prefix}-{method}-umap-scree.csv")
-
-                return
-
-            data = pd.DataFrame(embedding, columns=[f"{method.upper()} Dimension 1", f"{method.upper()} Dimension 2"], index=index) #all_latent.index)
+            data = pd.DataFrame(embedding, columns=[f"{method.upper()} Dimension 1", f"{method.upper()} Dimension 2"], index=all_latent.index)
             data = data.assign(ss_score=np.nan, electrostatics=np.nan)
 
             #Load features from previous run
@@ -338,10 +125,9 @@ class ExploreLatent():
                 #     break
             else:
                 #Does not exist, calculate features
-                print("calculating features")
                 with h5pyd.File(data_dir, use_cache=False) as f:
                     d = data.index.to_frame()
-                    for _, (cathDomain, superfamily) in tqdm(d.iterrows()):
+                    for _, (cathDomain, superfamily) in d.iterrows():
                         try:
                             atoms = f[f"{superfamily.replace('.', '/')}/domains/{cathDomain}/atom"][:]
                             alpha = atoms["is_helix"].sum()
@@ -358,15 +144,10 @@ class ExploreLatent():
 
             data.to_hdf(f"{prefix}-{method}-all_latent.h5", "table")
 
-        if len(superfamilies)==1 and len(domain_superfamily_mapping.superfamily.drop_duplicates()) > 1:
-            highlight_sfam = superfamilies[0]
-        else:
-            highlight_sfam = None
-
         if plot:
-            ExploreLatent.plot(data, prefix, method, feature="ss", highlight_sfam=highlight_sfam)
-            ExploreLatent.plot(data, prefix, method, feature="superfamily", highlight_sfam=highlight_sfam)
-            ExploreLatent.plot(data, prefix, method, feature="electrostatics", highlight_sfam=highlight_sfam)
+            ExploreLatent.plot(data, prefix, method, "ss")
+            ExploreLatent.plot(data, prefix, method, "superfamily")
+            ExploreLatent.plot(data, prefix, method, "electrostatics")
             if extra_features is not None:
                 if not isinstance(extra_features, (list, tuple)):
                     extra_features = [extra_features]
@@ -374,7 +155,7 @@ class ExploreLatent():
                     ExploreLatent.plot(data, prefix, method, extra_feature)
 
     @staticmethod
-    def plot(data, prefix, method, feature="ss", highlight_sfam=None, old=False):
+    def plot(data, prefix, method, feature="ss", old=False):
         assert feature in ["ss", "electrostatics", "superfamily"]
         import matplotlib as mpl
         plt.rcParams['font.size'] = 18
@@ -454,15 +235,7 @@ class ExploreLatent():
         with sns.color_palette(viridis([0, 1, 0.3])) as cmap2:
             sns.kdeplot(data=data, x=d1_name, y=d2_name, hue="CATH Class", thresh=.1, alpha=0.3, common_norm=False)
 
-        if highlight_sfam is not None:
-            # data = data.assign(**{"Superfamily": data["superfamily"].apply(
-            #     lambda x: f"Is {highlight_sfam}" if x==highlight_sfam else "Other Superfamily"})
-            
-            sns.scatterplot(data=data[data.superfamily!=highlight_sfam], x=d1_name, y=d2_name, s=10, c=data[data.superfamily!=highlight_sfam]["color"])
-            sns.scatterplot(data=data[data.superfamily==highlight_sfam], x=d1_name, y=d2_name, s=10, c=data[data.superfamily==highlight_sfam]["color"], marker="*")
-            #sns.scatterplot(data=data, x=d1_name, y=d2_name, s=10, c=data["color"], style="Superfamily")
-        else:
-            sns.scatterplot(data=data, x=d1_name, y=d2_name, s=10, c=data["color"]) #, ax=g.ax_joint
+        sns.scatterplot(data=data, x=d1_name, y=d2_name, s=10, c=data["color"]) #, ax=g.ax_joint
 
         plt.gca().spines['right'].set_visible(False)
         plt.gca().spines['top'].set_visible(False)
@@ -781,7 +554,23 @@ class ExploreLatent():
         ExploreLatent.plot(data, prefix, method, "superfamily", old=True)
         ExploreLatent.plot(data, prefix, method, "electrostatics", old=True)
 
-def run(args, umap_nneighbors=15, min_dist=0.1):
+
+
+if __name__ == "__main__":
+    import argparse
+    sfams = "1.10.10.10 1.10.238.10 1.10.490.10 1.10.510.10 1.20.1260.10 2.30.30.100 2.40.50.140 2.60.40.10 3.10.20.30 3.30.230.10 3.30.300.20 3.30.310.60 3.30.1360.40 3.30.1370.10 3.30.1380.10 3.40.50.300 3.40.50.720 3.80.10.10 3.90.79.10 3.90.420.10".split()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-p", "--prefix", default="latent-space")
+    parser.add_argument("-d", "--data-dir", required=True)
+    parser.add_argument("-r", "--result-dir", required=True)
+    parser.add_argument("-m", "--method", nargs="+", default=["umap", "t-sne", "pca"], choices=["umap", "t-sne", "pca"])
+    parser.add_argument("--extra_features", nargs="+", default=None)
+    parser.add_argument("--seperate_sfams", action="store_true", default=False)
+    parser.add_argument("superfamilies", nargs="+", default=sfams, help="superfamilies to include", )
+    
+    #parser.add_argument("files", nargs="+", default=None, help="Path to pytorch tensof files")
+    args = parser.parse_args()
+
     if not args.seperate_sfams:
         for method in args.method:
             ExploreLatent.reduce(
@@ -792,88 +581,18 @@ def run(args, umap_nneighbors=15, min_dist=0.1):
                 method=method, 
                 extra_features=args.extra_features,
                 seperate_sfams=args.seperate_sfams,
-                use_pickle=args.use_pickle,
-                pickle_file=args.pickle_file,
-                cosine=args.cosine,
-                mahalanobis=args.mahalanobis,
-                combined_model=args.combined_model,
-                umap_nneighbors=umap_nneighbors,
-                umap_min_dist=min_dist
-                )
-    elif args.seperate_sfams_axis == "col":
-        all_reps = get_representative_domains(args.superfamilies, args.data_dir)
-        for method in args.method:
-            ExploreLatent.reduce(
-                *args.superfamilies, 
-                result_dir=args.result_dir, 
-                data_dir=args.data_dir, 
-                prefix=args.prefix, 
-                method=method, 
-                extra_features=args.extra_features,
-                seperate_sfams=True,
-                optimal_transport=args.optimal_transport,
-                ot_combine_mode=args.ot_combine_mode,
-                use_pickle=args.use_pickle,
-                pickle_file=args.pickle_file,
-                cosine=args.cosine,
-                mahalanobis=args.mahalanobis,
-                umap_nneighbors=umap_nneighbors,
-                umap_min_dist=min_dist
                 )
     else:
         all_reps = get_representative_domains(args.superfamilies, args.data_dir)
         for sfam in args.superfamilies:
             for method in args.method:
-                try:
-                    ExploreLatent.reduce(
-                        sfam, 
-                        result_dir=args.result_dir, 
-                        data_dir=args.data_dir, 
-                        prefix=args.prefix+f"-{sfam}", 
-                        method=method, 
-                        extra_features=args.extra_features,
-                        seperate_sfams=True,
-                        domain_superfamily_mapping=all_reps,
-                        use_pickle=args.use_pickle,
-                        pickle_file=args.pickle_file,
-                        cosine=args.cosine,
-                        mahalanobis=args.mahalanobis,
-                        umap_nneighbors=umap_nneighbors,
-                        umap_min_dist=min_dist
-                        )
-                except Exception:
-                    raise
-
-if __name__ == "__main__":
-    import argparse
-    sfams = "1.10.10.10 1.10.238.10 1.10.490.10 1.10.510.10 1.20.1260.10 2.30.30.100 2.40.50.140 2.60.40.10 3.10.20.30 3.30.230.10 3.30.300.20 3.30.310.60 3.30.1360.40 3.30.1370.10 3.30.1380.10 3.40.50.300 3.40.50.720 3.80.10.10 3.90.79.10 3.90.420.10".split()
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-p", "--prefix", default="latent-space")
-    parser.add_argument("-d", "--data-dir", required=True)
-    parser.add_argument("-r", "--result-dir", required=True)
-    parser.add_argument("-m", "--method", nargs="+", default=["umap", "t-sne", "pca"], choices=["umap", "t-sne", "pca", "pca-all", "umap-all"])
-    parser.add_argument("--extra_features", nargs="+", default=None)
-    parser.add_argument("--seperate_sfams", action="store_true", default=False)
-    parser.add_argument("--seperate_sfams_axis", default="row", choices=["row", "col"])
-    parser.add_argument("--use_pickle", default=False, action="store_true")
-    parser.add_argument("--pickle_file", default=None)
-    parser.add_argument("--cosine", default=False, action="store_true")
-    parser.add_argument("--mahalanobis", default=False, action="store_true")
-    parser.add_argument("--combined_model", action="store_true", default=False)
-    parser.add_argument("--vary_umap_neighbors", action="store_true", default=False)
-    parser.add_argument("--vary_umap_min_dist", action="store_true", default=False)
-    parser.add_argument("--optimal_transport", action="store_true", default=False)
-    parser.add_argument("--ot_combine_mode", default=None, choices=["col", "haddamard", "contract"])
-    parser.add_argument("superfamilies", nargs="+", default=sfams, help="superfamilies to include", )
-    
-    #parser.add_argument("files", nargs="+", default=None, help="Path to pytorch tensof files")
-    args = parser.parse_args()
-
-    if args.vary_umap_neighbors:
-        for n_neighbors in (2, 5, 10, 20, 50, 100, 200):
-            run(args, n_neighbors=n_neighbors)
-    elif args.vary_umap_min_dist:
-        for min_dist in (0.8, 1.0, 2.0, 10.): #(0., 0.2, 0.5, 1, 10):
-            run(args, min_dist=min_dist)
-    else:
-        run(args)
+                ExploreLatent.reduce(
+                    sfam, 
+                    result_dir=args.result_dir, 
+                    data_dir=args.data_dir, 
+                    prefix=args.prefix+f"-{sfam}", 
+                    method=method, 
+                    extra_features=args.extra_features,
+                    seperate_sfams=True,
+                    domain_superfamily_mapping=all_reps
+                    )

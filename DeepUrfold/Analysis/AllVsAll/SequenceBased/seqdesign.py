@@ -12,8 +12,8 @@ import pandas as pd
 
 
 from DeepUrfold.Analysis.AllVsAll.SequenceBased.deepsequence import DeepSequenceAllVsAll
-from molmimic.parsers.container import Container
-from molmimic.parsers.muscle import Muscle
+from Prop3D.parsers.container import Container
+from Prop3D.parsers.muscle import Muscle
 
 import torch
 

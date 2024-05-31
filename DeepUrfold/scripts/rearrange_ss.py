@@ -18,10 +18,10 @@ from Bio.PDB import Selection
 #from Bio.PDB.vectors import calc_dihedral
 
 
-from molmimic.common.DistributedStructure import DistributedStructure
-from molmimic.parsers.MODELLER import MODELLER
-from molmimic.generate_data.create_input_files import create_input_files
-from molmimic.common.ProteinTables import atoms_to_aa, three_to_one
+from Prop3D.common.DistributedStructure import DistributedStructure
+from Prop3D.parsers.MODELLER import MODELLER
+#from Prop3D.generate_data.create_input_files import create_input_files
+from Prop3D.common.ProteinTables import atoms_to_aa, three_to_one
 
 """MLP: Multiple Loop Permutations
 
@@ -114,19 +114,27 @@ def _model_permutation(obj, perm):
 
 writer = PDBIO()
 def write_atom(fp, atom, atom_number, resname, resseq, chain):
-    s = writer._get_atom_line(
-                    Atom(name=atom["atom_name"].decode("utf-8").strip(), coord=atom[["X", "Y", "Z"]],
-                         bfactor=atom["bfactor"], occupancy=1.0, altloc=" ",
-                         fullname=atom["atom_name"].decode("utf-8"),
-                         serial_number=atom["serial_number"]),
-                    " ",
-                    " ",
-                    atom_number,
-                    resname,
-                    resseq,
-                    " ",
-                    chain,
-                )
+    if not isinstance(atom, Atom):
+        atom = Atom(
+            name=atom["atom_name"].decode("utf-8").strip(), 
+            coord=tuple(atom[["X", "Y", "Z"]]),
+            bfactor=atom["bfactor"], occupancy=1.0, altloc=" ",
+            fullname=atom["atom_name"].decode("utf-8"),
+            serial_number=atom["serial_number"]
+        )
+    try:
+        s = writer._get_atom_line(
+            atom,
+            " ",
+            " ",
+            atom_number,
+            resname,
+            resseq,
+            " ",
+            str(chain),
+        )
+    except TypeError:
+        import pdb; pdb.set_trace()
     fp.write(s)
 
 class Alanine(Residue):
@@ -136,7 +144,7 @@ class Alanine(Residue):
             self.add(Atom(atom.strip(), np.random.rand(3), 20., 1., " ", atom, 1))
 
 class MLP(object):
-    def __init__(self, h5_file, cath_domain, cathcode, cutoff=15, short_loops=False, random_loops=False, only_show_count=False, n_jobs=1):
+    def __init__(self, h5_file, cath_domain, cathcode, cutoff=15, short_loops=False, random_loops=False, only_show_count=False, n_jobs=1, min_ss_len=3):
         self.h5_file = h5_file
         self.cath_domain = cath_domain
         self.cathcode = cathcode
@@ -144,6 +152,7 @@ class MLP(object):
         self.short_loops=short_loops
         self.random_loops=random_loops
         self.only_show_count = only_show_count
+        self.min_ss_len = min_ss_len
 
         #self.pdb_file = os.path.join(DATA_DIR, "prepared-cath-structures", *cathcode.split("."), f"{cath_domain}.pdb")
         #self.features_path = os.path.join(DATA_DIR, "cath_features", *cathcode.split("."))
@@ -165,9 +174,11 @@ class MLP(object):
 
     def rearrange_ss(self, n_jobs=1):
         #Step 1: Get Secondary Structure
+        print("Is OB?", self.cathcode=="2.40.50.140")
         self.ss_groups, self.loop_for_ss, self.original_order, self.ss_type, \
             self.leading_trailing_residues, self.number_ss = \
-            self.structure.get_secondary_structures_groups(verbose=True)
+            self.structure.get_secondary_structures_groups(verbose=True, ss_min_len=self.min_ss_len,
+                is_ob=self.cathcode=="2.40.50.140")
 
         #Step 2: Find allowable combinations
         self.get_allowable_loop_combinations()
@@ -196,9 +207,9 @@ class MLP(object):
         else:
             permutations = list(self._permutations())
             print(f"Creating {len(permutations)} permutations...")
-            Parallel(n_jobs=n_jobs)(delayed(_model_permutation)(self, perm) for perm in permutations)
+            Parallel(n_jobs=1)(delayed(_model_permutation)(self, perm) for perm in permutations)
 
-        self.create_dataset(f"{self.cath_domain}_{self.cathcode}_MLP_files.txt")
+        #self.create_dataset(f"{self.cath_domain}_{self.cathcode}_MLP_files.txt")
 
         #return input_file
 
@@ -347,6 +358,9 @@ class MLP(object):
             ss1_id = tuple(np.unique(r["residue_id"])[0] for r in ss1)
             ss2_id = tuple(np.unique(r["residue_id"])[0] for r in ss2)
 
+            if str(type(ss1_id[0])) != "<class 'numpy.bytes_'>":
+                import pdb; pdb.set_trace()
+
             if dist < self.cutoff:
                 #print("allowed", self.original_order[ss1], self.ss_type[ss1], f"({ss1[-1].get_id()}, {atom1.coord})", "->", self.original_order[ss2], self.ss_type[ss2], f"({ss2[0].get_id()}, {atom2.coord})", dist)
                 self.allowed_ss_combos.append((ss1_id, ss2_id))
@@ -374,7 +388,7 @@ class MLP(object):
                                 overlap += 1
 
                     if overlap<2:
-                        self.allowed_ss_combos.append((ss1, ss2))
+                        self.allowed_ss_combos.append((ss1_id, ss2_id))
                         self.loop_distance[(ss1_id, ss2_id)] = dist
                     else:
                         # print("prohibited", self.original_order[ss1], self.ss_type[ss1],
@@ -432,6 +446,7 @@ class MLP(object):
         for ss1, ss2 in pairwise(order):
             ss1_id = tuple(np.unique(r["residue_id"])[0] for r in ss1)
             ss2_id = tuple(np.unique(r["residue_id"])[0] for r in ss2)
+            
             if (ss1_id, ss2_id) not in self.allowed_ss_combos:
                 skip = True
                 break
@@ -532,7 +547,7 @@ class MLP(object):
                 resseq, atom_number, no_loop_sequence, loop_sequence = self.write_residue_group(
                     perm_pdb, self.leading_trailing_residues[perm_name[-1]], resseq, atom_number,
                     no_loop_sequence, loop_sequence)
-
+        
         return perm_pdb_name, loop_data, ss_data, (no_loop_sequence, loop_sequence)
 
     def model_loop_permutation(self, perm):
@@ -579,12 +594,14 @@ class MLP(object):
             no_loop_sequence += "-"*len(residue_group)
 
         for residue in residue_group:
-            if not "residue_name" in residue.dtype.names:
+            if isinstance(residue, Alanine):
+                resname = "ALA"
+            elif not "residue_name" in residue.dtype.names:
                 atom_names = frozenset([a.decode("utf-8").strip() for a in residue["atom_name"]])
                 resname = atoms_to_aa(atom_names, raise_unknown=False)
                 print(resname, atom_names)
             else:
-                resname = residue["residue_name"][0]
+                resname = residue["residue_name"][0].decode("utf-8").strip()
             if not mark_unknown:
                 for atom in residue:
                     write_atom(perm_pdb, atom, atom_number, resname, resseq, self.structure.chain)
@@ -626,6 +643,7 @@ if __name__ == "__main__":
     parser.add_argument("--random_loops", default=False, action="store_true")
     parser.add_argument("--only_show_count", default=False, action="store_true")
     parser.add_argument("-j", "--cpus", default=1, type=int)
+    parser.add_argument("--min_ss_len", default=3, type=int)
     parser.add_argument("--create-dataset", default=None)
 
     args = parser.parse_args()
@@ -635,4 +653,5 @@ if __name__ == "__main__":
     else:
         MLP(args.h5_file, args.cath_domain, args.cathcode, cutoff=args.cutoff,
             short_loops=args.short_loops, random_loops=args.random_loops,
-            only_show_count=args.only_show_count, n_jobs=args.cpus)
+            only_show_count=args.only_show_count, n_jobs=args.cpus,
+            min_ss_len=args.min_ss_len)

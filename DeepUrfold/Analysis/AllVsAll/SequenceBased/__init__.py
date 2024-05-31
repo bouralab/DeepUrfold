@@ -12,8 +12,8 @@ from Bio import SeqIO
 from joblib import Parallel, delayed
 
 from DeepUrfold.Analysis.AllVsAll import AllVsAll
-from molmimic.parsers.cath import CATHApi
-from molmimic.parsers.muscle import Muscle
+from Prop3D.parsers.cath import CATHApi
+from Prop3D.parsers.muscle import Muscle
 
 
 def parallel_align(obj, i, model_name, sequences, out_file=None):

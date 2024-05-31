@@ -3,12 +3,18 @@ import argparse
 from math import ceil
 from functools import partial
 import subprocess
+import warnings
 
 import torch
 import pandas as pd
 import pytorch_lightning as pl
-import MinkowskiEngine as ME
 from torch.utils.data import DataLoader
+
+try:
+    import MinkowskiEngine as ME
+except ImportError:
+    ME = None
+    warnings.warn("Minkowski Engine not installed, wont be able to create batches")
 
 from DeepUrfold.Datasets.DomainStructureDataset import DomainStructureDataset
 from DeepUrfold.Datasets.DistributedDomainStructureDataset import DistributedDomainStructureDataset
@@ -16,13 +22,11 @@ from DeepUrfold.Datasets.DistributedDomainStructureDataset import DistributedDom
 from DeepUrfold.util import str2bool
 from DeepUrfold.Models.van_der_waals_surface import search_algorithms as space_fill_algorithms
 
-from molmimic.generate_data.get_cath_representatives import get_representatives
-
 default_atom_features = "H;HD;HS;C;A;N;NA;NS;OA;OS;SA;S;Unk_atom__is_helix;is_sheet;Unk_SS__residue_buried__is_hydrophobic__pos_charge__is_electronegative"
 default_feature_groups = "Atom Type;Secondary Structure;Solvent Accessibility;Hydrophobicity;Charge;Electrostatics"
 
 
-#from molmimic.common.features import atom_features
+#from Prop3D.common.features import atom_features
 # atom_features = [
 #      'C', 'CA', 'N', 'O', 'OH', 'C_elem', 'N_elem', 'O_elem', 'S_elem',
 #       'ALA', 'CYS', 'ASP', 'GLU', 'PHE', 'GLY', 'HIS', 'ILE', 'LYS', 'LEU',

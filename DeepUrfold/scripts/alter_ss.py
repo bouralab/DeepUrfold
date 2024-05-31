@@ -13,9 +13,9 @@ from Bio.PDB import Selection
 from Bio.PDB.Polypeptide import three_to_one
 from Bio.PDB.vectors import calc_dihedral
 
-from molmimic.common.Structure import Structure
-from molmimic.parsers.MODELLER import MODELLER
-from molmimic.generate_data.create_input_files import create_input_files
+from Prop3D.common.Structure import Structure
+from Prop3D.parsers.MODELLER import MODELLER
+from Prop3D.generate_data.create_input_files import create_input_files
 
 """MLP: Multiple Loop Permutations
 

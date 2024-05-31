@@ -5,7 +5,10 @@ import glob
 import json
 import subprocess
 import itertools
+from pathlib import Path
+import urllib.request
 
+import h5pyd
 import numpy as np
 import pandas as pd
 from sklearn import metrics
@@ -16,10 +19,18 @@ from joblib import Parallel, delayed
 
 import matplotlib
 import seaborn as sns
-import graph_tool as gt
+try:
+    import graph_tool as gt
+except (ImportError, ModuleNotFoundError):
+    print("Unable to run overlap_score without graph_tool")
+    gt = None
 import matplotlib.pyplot as plt
 
-from molmimic.util.pdb import get_b
+from Prop3D.util.pdb import get_b
+from Prop3D.parsers.cath import CATHApi
+
+from pandarallel import pandarallel
+pandarallel.initialize(nb_workers=16, progress_bar=True)
 
 class Clustering(object):
     def __init__(self, distances, tool_name, model, model_input, score_type, increasing=True, sample=False):
@@ -107,7 +118,7 @@ class Clustering(object):
         except np.linalg.LinAlgError:
             bw = 0.1
         kde_skl = KernelDensity(bandwidth=bw, kernel="gaussian", **kwargs)
-        kde_skl.fit(x[:, np.newaxis])
+        kde_skl.fit(x.to_numpy()[:, np.newaxis])
         # score_samples() returns the log-likelihood of the samples
         log_pdf = kde_skl.score_samples(x_grid[:, np.newaxis])
         return kde_skl, np.exp(log_pdf)
@@ -115,10 +126,25 @@ class Clustering(object):
     # Find intersection
     def _findIntersection(self, fun1, fun2, lower, upper):
         return brentq(lambda x : fun1(x) - fun2(x), lower, upper)
-
+        
     def get_descriminator(self, sfam_name, plot=True):
-        self.get_descriminator_logodds(sfam_name)
-        return self.get_descriminator_kde(sfam_name, plot=plot)
+        discrimators_path = Path(self.path_prefix) / f"descriminators.h5"
+        if discrimators_path.is_file():
+            descriminators = pd.read_hdf(str(discrimators_path), "table")
+            self.kde_descriminators = descriminators["kde"].to_dict()
+            self.log_odds_descriminator = descriminators["log_odds"].to_dict()
+            self.log_odds = descriminators["log_odds_value"].to_dict()
+        else:
+            self.get_descriminator_logodds(sfam_name)
+            self.get_descriminator_kde(sfam_name, plot=plot)
+
+            kde = pd.DataFrame(self.kde_descriminators.items(), columns=["sfam", "kde"])
+            log_odds = pd.DataFrame(self.log_odds_descriminator.items(), columns=["sfam", "log_odds"])
+            log_odds_val = pd.DataFrame(self.log_odds.items(), columns=["sfam", "log_odds_value"])
+            descriminators = pd.merge(pd.merge(kde, log_odds, on="sfam"), log_odds_val, on="sfam").set_index("sfam")
+            descriminators.to_hdf(str(discrimators_path), "table")
+
+        return
 
     def _plot(self, sfam, other, sfam_name, prefix="", vertical_lines={}): #descriminator=None, max_sfam=None, max_other=None):
         fig = plt.figure(figsize=(10, 6), dpi=300)
@@ -284,7 +310,13 @@ class Clustering(object):
         labels_true = other_clusters
         labels_pred = this_clusters
 
-        return gt.inference.partition_overlap(labels_true, this_clusters_int), \
+        if gt is not None:
+            overlap_score = gt.inference.partition_overlap(labels_true, this_clusters_int)
+        else:
+            print("Unable to run overlap_score without graph_tool")
+            overlap_score = np.nan
+            
+        return overlap_score, \
             metrics.rand_score(labels_true, labels_pred), \
             metrics.adjusted_rand_score(labels_true, labels_pred), \
             metrics.adjusted_mutual_info_score(labels_true, labels_pred), \
@@ -296,18 +328,24 @@ class Clustering(object):
     def silhouette_score(self, metric='euclidean'):
         this_clusters = self.domain_group_membership[[c for c in self.domain_group_membership.columns if "Level" in c]]
         this_clusters = this_clusters.astype(str).agg('.'.join, axis=1)
-        return metrics.silhouette_score(self.distances, this_clusters, metric=metric)
+        try:
+            return metrics.silhouette_score(self.distances, this_clusters, metric=metric)
+        except ValueError:
+            return np.nan
 
     def davies_bouldin_score(self):
         this_clusters = self.domain_group_membership[[c for c in self.domain_group_membership.columns if "Level" in c]]
         this_clusters = this_clusters.astype(str).agg('.'.join, axis=1)
-        return metrics.davies_bouldin_score(self.distances, this_clusters)
+        try:
+            return metrics.davies_bouldin_score(self.distances, this_clusters)
+        except ValueError:
+            return np.nan
 
     def internal_evaluation(self, silhouette_metric="euclidean"):
         return self.silhouette_score(silhouette_metric), self.davies_bouldin_score()
 
     COMPARISON_ROW_COLUMNS = ["Silhoette Score", "Davies-Boundin Score", "Overlap Score",
-                              "Rand Score", "Rand Score Adjusted", "Adjusted Mutual Information", 
+                              "Rand Score", "Rand Score Adjusted", "Adjusted Mutual Information",
                               "Homogeneity Score", "Completeness Score"]
     def make_comparison_table_row(self, silhouette_metric="euclidean", deepurfold_clusters=None):
         row = [self.tool_name, self.model, self.model_input, self.score_type, self.n_clusters,
@@ -335,12 +373,25 @@ class Clustering(object):
 
     @staticmethod
     def read_clusters_and_process(cluster_file, process_node=None, process_leaf=None, n_jobs=None):
-        df = pd.read_hdf(cluster_file, "table")
-        ss = pd.read_hdf("/media/smb-rivanna/ed4bu/UrfoldServer/urfold_runs/superfamilies_for_paper/All models-umap-all_latent.h5", "table")[["ss_score2", "cath_domain"]]
-        from sklearn.preprocessing import MinMaxScaler
-        ss = ss.assign(ss=MinMaxScaler().fit_transform(ss["ss_score2"].values.reshape((len(ss["ss_score2"]),1))).flatten()).drop(columns=["ss_score2"])
-        df = pd.merge(df.reset_index(), ss, left_on="cathDomain", right_on="cath_domain")
-        df = df.set_index(["cathDomain", "true_sfam"]).drop(columns=["cath_domain"])
+        if cluster_file.endswith(".h5"):
+            df = pd.read_hdf(cluster_file, "table")
+            ss = pd.read_hdf("/media/smb-rivanna/ed4bu/UrfoldServer/urfold_runs/superfamilies_for_paper/All models-umap-all_latent.h5", "table")[["ss_score2", "cath_domain"]]
+            from sklearn.preprocessing import MinMaxScaler
+            ss = ss.assign(ss=MinMaxScaler().fit_transform(ss["ss_score2"].values.reshape((len(ss["ss_score2"]),1))).flatten()).drop(columns=["ss_score2"])
+            df = pd.merge(df.reset_index(), ss, left_on="cathDomain", right_on="cath_domain")
+            df = df.set_index(["cathDomain", "true_sfam"]).drop(columns=["cath_domain"])
+        else:
+            with open(cluster_file) as f:
+                header = next(f).rstrip().split(",")
+                header[0] = "id"
+                data = [(l.split(",", 1)[0].split(".")[-1], *l.rstrip().split(",")[1:]) \
+                    for l in f if l.count(",")+1==len(header)]
+                df = pd.DataFrame(data, columns=header)
+                df = df.rename(columns={"sfam":"true_sfam"})
+                levels = df["id"].str.split(",", expand=True)
+                levels = levels.rename(columns={l:f"Level {l}" for l in levels.columns})
+                df = pd.concat((levels, df))
+                df = df.set_index(["cathDomain", "true_sfam"])
 
         if process_node is None and process_leaf is None:
             return df
@@ -442,7 +493,7 @@ class Clustering(object):
 
     @staticmethod
     def align_communities(cluster_file, g):
-        from molmimic.parsers.superpose.mtmalign import mTMAlign
+        from Prop3D.parsers.superpose.tmalign import TMAlign
         data_dir = "/home/bournelab/data-eppic-cath-features/prepared-cath-structures"
 
         if not os.path.isdir("alignments"):
@@ -460,7 +511,7 @@ class Clustering(object):
 
             ocwd = os.getcwd()
             os.chdir(aln_dir)
-            distances = mTMAlign(work_dir=aln_dir).all_vs_all(pdb_files, out_file=results_file)
+            distances = TMAlign(work_dir=aln_dir).all_vs_all(pdb_files, out_file=results_file)
             os.chdir(ocwd)
             return distances
 
@@ -726,7 +777,26 @@ class Clustering(object):
         #     print()
 
     @staticmethod
-    def run_lrp(g):
+    def run_lrp(cluster_file, data_dir):
+        from Prop3D.parsers.superpose.tmalign import TMAlign
+        data_dir = Path(data_dir)
+        def process_leaf(h, level_name):
+            all_lrp_files = []
+            sfams_in_group = h.index.get_level_values(1).drop_duplicate()
+            for sfam_group in sfams_in_group:
+                sfam_group_dir = data_dir / sfam_group / "lrp"
+                for cathDomain, sfam in h.index:
+                    lrp_file = next((sfam_group_dir / cathDomain).glob("*.75pctquntile.pdb"))
+                    all_lrp_files.append(lrp_file)
+
+            tmalign = TMAlign()
+            df = tmalign.cluster(all_lrp_files)
+            df.to_csv(results_file)
+
+        Clustering.read_clusters_and_process(cluster_file, process_leaf=process_leaf, process_node=process_node, n_jobs=16)
+
+    @staticmethod
+    def run_lrp2(g):
         data_dir = "/home/bournelab/data-eppic-cath-features"
         os.makedirs(os.path.join(os.getcwd(), "lrp"), exist_ok=True)
         superfamilies = g.index.get_level_values('true_sfam').drop_duplicates()
@@ -867,13 +937,13 @@ class Clustering(object):
                 subprocess.call(cmd(sfam_group.cathDomain, sfam, sfam_model))
 
     def align_structures(self, g):
-        from molmimic.parsers.superpose.mtmalign import mTMAlign
+        from Prop3D.parsers.superpose.mtmalign import TMAlign
         data_dir = "/home/bournelab/data-eppic-cath-features/prepared-cath-structures"
         pdb_files = [f"{data_dir}/{sfam.replace('.','/')}/{cathDomain}.pdb" for cathDomain, sfam in g.index]
 
         group_name = "-".join(map(str,g.iloc[0].index))
         results_file = f"{group_name}.pdb"
-        distances = mTMAlign().all_vs_all(pdb_files, out_file=results_file)
+        distances = TMAlign().all_vs_all(pdb_files, out_file=results_file)
 
 
         distances.groupby("chain1")["moving_tm_score"].agg(sum)
@@ -904,6 +974,325 @@ class Clustering(object):
         centroid_distances = centroid_distances.to_dict()["distances"]
         centroid_distances[centroid_item["centroid_pdb_file"].split("/")[-1][:7]]=0.0
         return centroid_distances
+
+    def calculate_cluster_metrics(self, old_flare=None):
+        assert hasattr(self, 'cluster_data'), "Subclass needs to store cluster data. pandas data frame n domains x n superfamilies"
+
+        precalculated_feats = None
+        load_flare_file = Path(old_flare) if old_flare is not None else Path("flare.csv")
+        if load_flare_file.exists():
+            print("READING flare.csv")
+            #precalculated_feats = df.read_csv("flare.csv", )
+            with load_flare_file.open() as f:
+                header = next(f).rstrip().split(",")
+                header[0] = "id"
+                precalculated_feats = [(l.split(",", 1)[0].split(".")[-1], *l.rstrip().split(",")[1:]) \
+                    for l in f if l.count(",")+1==len(header)]
+                precalculated_feats = pd.DataFrame(precalculated_feats, columns=header)
+                print(precalculated_feats)
+                assert len(precalculated_feats)>0, precalculated_feats
+                precalculated_feats = precalculated_feats[['cathDomain', 'value', 'ss', 'charge', 'electrostatics', 'go_acc', 'sfam', 'sfam_name']]
+            print("Loaded old data from flare", precalculated_feats)
+        else:
+            print("Cannot find preloaded feats")
+
+        flare_file = Path("flare.csv")
+
+        def get_cc(go_codes):
+            go_locs = {'GO:0005886': 'plasma membrane',
+                     'GO:0005576': 'extracellular region',
+                     'GO:0005887': 'integral component of plasma membrane',
+                     'GO:0070062': 'extracellular exosome',
+                     'GO:0005829': 'cytosol'}
+            for go, loc in go_locs.items():
+                if go in go_codes:
+                    return loc
+
+            return ""
+
+        def get_feats(cathDomain, sfam):
+            try:
+                with h5pyd.File("/home/ed4bu/deepurfold-paper-2.h5", use_cache=False) as f:
+                    atom_df = f[f"{sfam.replace('.', '/')}/domains/{cathDomain}/atom"][...]
+            except KeyError:
+                print(f"Cannot open {sfam.replace('.', '/')}/domains/{cathDomain}/atom")
+                return None
+            size = len(atom_df)
+            ss = (atom_df["is_sheet"].sum()-atom_df["is_helix"].sum())/(2*(atom_df["is_sheet"].sum()+atom_df["is_helix"].sum()))+0.5
+            charge = atom_df["pos_charge"].sum()/size
+            electrostatics = 1-atom_df["is_electronegative"].sum()/size
+            conserved = atom_df["is_conserved"].sum()/size
+            #go_acc = "+".join(go_codes.get(cathDomain, []).split(" "))
+            #print("go_acc", go_acc)
+            # if go_codes is None:
+            #     assert 0
+            cath = CATHApi()
+            domain_summary = cath.get_domain_summary(cathDomain)
+            try:
+                go_acc = pd.DataFrame.from_dict(domain_summary["go_terms"])["go_acc"]
+            except KeyError:
+                go_acc = pd.Series()
+
+            go_acc = "+".join(go_acc)
+            print("Got go code", go_acc)
+
+
+            # else:
+            #     go_acc = go_codes.get(cathDomain, []).split(" ")
+            loc = get_cc(go_acc)
+
+
+
+            result = pd.Series({"size":size, "ss":ss, "charge":charge,
+                "electrostatics":electrostatics, "conserved":conserved,
+                "go_acc":go_acc, "sfam":sfam, "cc":loc}, name=cathDomain)
+            return result
+
+        if precalculated_feats is None:
+            print(self.cluster_data)
+            feats = self.cluster_data.reset_index()
+            if "true_sfam" in feats.columns:
+                feats = feats.rename(columns={"true_sfam":"sfam"})
+            feats = feats.set_index("cathDomain")
+            print(self.cluster_data)
+            feats = feats[~feats.index.str.contains("=")]
+            feats = pd.merge(feats, feats.parallel_apply(lambda r: get_feats(r.name, r.sfam), axis=1), left_index=True, right_index=True)
+        else:
+            feats = precalculated_feats.rename(columns={"value":"size"}).set_index("cathDomain")
+            missing = self.cluster_data.reset_index().set_index("cathDomain")
+            missing = missing[(~missing.index.isin(feats.index))&(~missing.index.str.contains("="))]
+            if len(missing)>0:
+                print("Run subet feats", len(missing))
+                feats = pd.concat((feats, missing.apply(lambda r: get_feats(r.name, r.sfam), axis=1)))
+            feats = pd.merge(feats, self.cluster_data.reset_index().drop(columns=["true_sfam"]).set_index("cathDomain"), left_index=True, right_index=True)
+            print(feats)
+
+        def get_sfam_names(sfam):
+            cath = CATHApi()
+            name = cath.get_superfamily_info(sfam)["data"]["classification_name"]
+            if name is None:
+                name = cath.list_children_in_heirarchy(sfam.rsplit(".", 1)[0], 4)["name"]
+            return sfam, name.replace(",", "-")
+
+        if "sfam_x" in feats:
+            feats = feats.rename(columns={"sfam_x":"sfam"})
+
+        sfam_full_names = pd.DataFrame([get_sfam_names(sfam) for sfam in feats.sfam.drop_duplicates().dropna()], columns=["sfam", "sfam_name"])
+
+        if "sfam_x" in feats:
+            feats = feats.rename(columns={"sfam_x":"sfam"})
+
+        feats_ = pd.merge(feats.reset_index(), sfam_full_names, on="sfam", how="left")
+        assert len(feats_) == len(feats), f"{len(feats_)}, {len(feats)}"
+        feats = feats_.set_index("cathDomain")
+
+        feats = calculate_enrichment(feats, prefix="sbm")
+
+        if "sfam_x" in feats:
+            feats = feats.rename(columns={"sfam_x":"sfam"})
+
+        if "sfam_name_y" in feats:
+            feats = feats.drop(columns=["sfam_name_x"]).rename(columns={"sfam_name_y":"sfam_name"})
+
+        print("feats", feats)
+
+        with open("flare_links.csv", "w") as f:
+            pass
+
+        levels = feats[[c for c in self.cluster_data.columns if "l" in c]]
+        level_names = levels.astype(str)[sorted(levels.columns.tolist(), reverse=True)].agg('.'.join, axis=1)
+
+
+
+        used_names = []
+        with open("flare.csv", "w") as f:
+            print("id,cathDomain,value,ss,charge,electrostatics,go_acc,sfam,sfam_name,go_bp,go_mf,go_cc", file=f)
+            for i, row in feats.iterrows():
+                print(row.name)
+                try:
+                    name = level_names.loc[row.name]
+                except KeyError:
+                    name = f"0.{i}.{row.name}"
+                name_parts = name.split(".")
+                for np in range(len(name_parts)):
+                    lev_name = ".".join(name_parts[:np+1])
+                    if lev_name not in used_names:
+                        print(lev_name+",", file=f)
+                        used_names.append(lev_name)
+                print(f"{name}.{row.name}", row.name, row["size"], row.ss, row.charge, row.electrostatics, row.go_acc.replace(",","+"), row.sfam, f"\"{row.sfam_name}\"", f"\"{row.go_bp}\"", f"\"{row.go_mf}\"", f"\"{row.go_cc}\"", sep=",", file=f)
+
+        cath_feats = calculate_enrichment(feats.sort_values("sfam").copy(), group_key="cath", prefix="cath")
+        used_names = []
+        with open("flare-cath.csv", "w") as f:
+            print("id,cathDomain,value,ss,charge,electrostatics,go_acc,sfam,sfam_name,go_bp,go_mf,go_cc", file=f)
+            print("0,", file=f)
+            for sfam, domains in cath_feats.groupby("sfam"):
+                name_parts = sfam.split(".")
+                for np in range(len(name_parts)):
+                    lev_name = "0."+".".join(name_parts[:np+1])
+                    if lev_name not in used_names:
+                        print(lev_name+",", file=f)
+                        used_names.append(lev_name)
+                for i, row in domains.iterrows():
+                    print(f"0.{sfam}.{row.name}", row.name, row["size"], row.ss, row.charge, row.electrostatics, row.go_acc.replace(",","+"), row.sfam, f"\"{row.sfam_name}\"", f"\"{row.go_bp}\"", f"\"{row.go_mf}\"", f"\"{row.go_cc}\"", sep=",", file=f)
+
+
+        new_levels = {l:f"Level {l.split('_')[-1]}" for l in levels}
+
+        self.domain_group_membership = feats.rename(columns=new_levels).rename(columns={"sfam":"true_sfam"}).reset_index()[[*new_levels.values(), "cathDomain", "true_sfam"]]
+        self.domain_group_membership = self.domain_group_membership.set_index(["cathDomain", "true_sfam"])
+        self.n_clusters = self.domain_group_membership.groupby([*new_levels.values()]).ngroups
+
+        print(self.domain_group_membership)
+
+        with open("stats.csv", "w") as f:
+            print(*self.COMPARISON_ROW_COLUMNS, file=f)
+            print(self.make_comparison_table_row(), file=f)
+
+        subprocess.call([sys.executable, "-m", "DeepUrfold.Analysis.Webapp.__init__", "--port", "9999", "--feature", "all", "--save_svg"])
+
+def calculate_enrichment(feats, group_key=None, prefix=None):
+    from goatools import obo_parser
+    from sklearn.metrics import pairwise_distances
+    from goatools.semantic import semantic_similarity
+    from goatools.go_enrichment import GOEnrichmentStudy
+    from goatools.mapslim import mapslim
+    from itertools import groupby
+    from collections import Counter
+
+    if group_key in [None, "deepurfold"]:
+        group_key = [c for c in feats.columns if c.startswith("l_")]
+        if prefix is None:
+            prefix = group_key
+    elif group_key == "cath":
+        group_key = "sfam"
+        if prefix is None:
+            prefix = group_key
+    else:
+        if isinstance(group_key, (list, tuple)) and set(feats.columns).issubset(group_key):
+            pass
+        elif isinstance(group_key, str) and group_key in feats.columns:
+            pass
+        else:
+            raise RuntimeError(f"Invalid group_key: {group_key}")
+
+    if prefix is None:
+        prefix = ""
+
+    go_dag_file = Path('go-basic.obo')
+    slim_file = Path("goslim_agr.obo")
+
+    if not go_dag_file.exists():
+        urllib.request.urlretrieve("http://geneontology.org/ontology/go-basic.obo", "go-basic.obo")
+
+    if not slim_file.exists():
+        urllib.request.urlretrieve("http://current.geneontology.org/ontology/subsets/goslim_agr.obo", "goslim_agr.obo")
+
+    go_dag = obo_parser.GODag('go-basic.obo')
+    obodolete_dag = obo_parser.GODag('go-basic.obo', optional_attrs={'consider', 'replaced_by'}, load_obsolete=True, prt=None)
+    slim = obo_parser.GODag("goslim_agr.obo")
+    print(feats)
+    population_ids = set(feats.index)
+    id2gos = {n:set(go) if len(go)>1 or (len(go)==1 and go[0]!="") else set() \
+        for n, go in feats["go_acc"].str.split("+").to_dict().items()}
+    id2gos = {}
+    id2go_slims = {}
+    for n, go in feats["go_acc"].str.split("+").to_dict().items():
+        _go_acc = set()
+        slim_go_terms = set()
+        for go_t in go:
+            if go_t == "": continue
+            node = obodolete_dag[go_t]
+            if not node.is_obsolete:
+                _go_acc.add(go_t)
+            else:
+                if node.replaced_by[:3] == "GO:":
+                    _go_acc.add(node.replaced_by)
+                elif node.consider:
+                    for new in node.consider:
+                        if go_dag[new].namespace == "molecular_function":
+                            _go_acc.add(new)
+                            break
+                    else:
+                        for new in node.consider:
+                            if go_dag[new].namespace == "biological_process":
+                                _go_acc.add(new)
+                                break
+                        else:
+                            for new in node.consider:
+                                if go_dag[new].namespace == "cellular_component":
+                                    _go_acc.add(new)
+                                    break
+
+
+        for got in _go_acc:
+            slim_go_terms = slim_go_terms.union(mapslim(got, go_dag, slim)[0])
+        id2go_slims[n] = slim_go_terms
+        id2gos[n] = _go_acc
+    print(population_ids)
+    print(id2gos)
+    goeaobj = GOEnrichmentStudy(
+        population_ids,
+        id2go_slims,
+        slim, #go_dag,
+        methods=['bonferroni', 'fdr_bh'],
+        pvalcalc='fisher_scipy_stats')
+    n_go = set()
+    cc_go = set()
+    enriched_go = []
+    for block, domains in feats.groupby(group_key):
+        # go_acc = domains["go_acc"]
+        # go_acc = go_acc[go_acc!=""].dropna().str.split("+", expand=True).values.flatten()
+        # go_acc = go_acc[go_acc!=None]
+        # _go_acc = []
+
+        go_acc = [go_t for domain in domains.index for go_t in id2go_slims[domain]]
+
+        #go_acc = _go_acc
+        #go_acc = [obodolete_dag[go_t].replaced_by if obodolete_dag[go_t].is_obsolete else go_t for go_t in go_acc if go_t != ""]
+        go_acc_c = Counter(go_acc)
+        go_names = dict([(go_dag[go].name,c) for go, c in go_acc_c.most_common(10) if go_dag[go].namespace in ["molecular_function", "biological_process"]])
+        cc_names = dict([(go_dag[go].name,(go, c)) for go, c in go_acc_c.most_common(10) if go_dag[go].namespace in ["cellular_component"]])
+        n_go = n_go.union(set(go_names.keys()))
+        cc_go = cc_go.union(set(cc_names.keys()))
+        print(block, len(domains), go_names)
+
+        results = goeaobj.run_study_nts(set(domains.index))
+        enriched_go_group = [(r.GO, r.p_fdr_bh) for r in results if r.p_fdr_bh < 0.05 and r.enrichment=="e"]
+        enriched_go += enriched_go_group
+
+    enriched_go_grps = {n:list(g) for n, g in groupby(enriched_go, key=lambda x: x[0])}
+    go_terms = list(enriched_go_grps.keys())
+
+    go_bp = [term for term in go_terms if go_dag[term].namespace=="biological_process"]
+    go_mf = [term for term in go_terms if go_dag[term].namespace=="molecular_function"]
+    go_cc = [term for term in go_terms if go_dag[term].namespace=="cellular_component"]
+    feats = feats.assign(go_bp="", go_mf="", go_cc="")
+    for domain in feats.index:
+        d_gos = id2go_slims[domain]
+        if len(d_gos) == 0:
+            continue
+
+
+        for ns, terms in [("cc", go_cc), ("mf", go_mf), ("bp", go_bp)]:
+            for e_go in terms:
+                for d_go in d_gos:
+                    if e_go == d_go:
+                        feats.loc[domain, f"go_{ns}"] = e_go
+                        break
+                else:
+                    continue
+                break
+
+    for ns, terms in [("cc", go_cc), ("mf", go_mf), ("bp", go_bp)]:
+        with open(f"{prefix}-{ns}.txt", "w") as f:
+            print("code,name", file=f)
+            for go in terms:
+                print(go, f"\"{go_dag[go].name}\"", sep=",", file=f)
+
+    return feats
+
+
 
 if __name__ == "__main__":
     import argparse

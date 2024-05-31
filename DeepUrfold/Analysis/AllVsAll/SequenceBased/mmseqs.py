@@ -14,7 +14,7 @@ from joblib import Parallel, delayed
 from Bio.PDB.Polypeptide import three_to_one
 
 from DeepUrfold.Analysis.AllVsAll.SequenceBased import SequenceBasedAllVsAll
-from molmimic.parsers import mmseqs
+from Prop3D.parsers import mmseqs
 
 def run(i, fasta, hparams, other, total, work_dir, representative_domains):
     print(f"Running hyperparameter set: {i}/{total}")

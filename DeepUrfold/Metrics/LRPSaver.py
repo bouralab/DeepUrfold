@@ -16,6 +16,7 @@ class LRPSaver(RawMetricSaver):
         self.lrp_innvestigator = lrp_innvestigator
         self.atomic_relevance = atomic_relevance
         self.lrp_metric = lrp_metric
+        self.checkpoint = self.hparams.checkpoint
 
     def set_model(self, model):
         self.lrp_innvestigator = InnvestigateModel(model)
@@ -36,29 +37,24 @@ class LRPSaver(RawMetricSaver):
 
         assert torch.all(torch.eq(coords.cpu(), relevances.C.cpu())), f"Coords does not equal relevance coords: {coords} {relevances.C}"
 
-        num_batches = int(np.ceil(len(self.dm.test_dataset.data)/self.hparams.batch_size))
+        num_batches = int(np.ceil(len(self.dm.test_dataset)/self.hparams.batch_size))
         num_relevances = len(relevances.decomposed_features)
 
         if batch_idx < num_batches-1:
             assert num_relevances == self.hparams.batch_size, f"Number of relevances {num_relevances} does not equal the batch size ({self.hparams.batch_size}) {result[0].size()} {labels.size()}"
         else:
-            last_batch_size = len(self.dm.test_dataset.data)-self.hparams.batch_size*batch_idx
+            last_batch_size = len(self.dm.test_dataset)-self.hparams.batch_size*batch_idx
+            #print(f"Number of relevances {num_relevances} in the last batch does not equal the correct batch size ({last_batch_size})", len(self.dm.test_dataset.order), self.hparams.batch_size, batch_idx)
             assert num_relevances == last_batch_size, f"Number of relevances {num_relevances} in the last batch does not equal the correct batch size ({last_batch_size})"
 
         for sample_idx, (coords, relevance) in enumerate(zip(*relevances.decomposed_coordinates_and_features)):
             current_idx = self.hparams.batch_size*batch_idx+sample_idx
 
             cath_domain_embedding = cath_domains.features_at(sample_idx)[0]
-            cath_domain = self.dm.test_dataset.cath_domain_embedding.inverse_transform(cath_domain_embedding.cpu().int().numpy())[0]
-
-            data = self.dm.test_dataset.data[self.dm.test_dataset.data.cathDomain==cath_domain]
-            pdb_file, cath_domain = data[["structure_file", "cathDomain"]].iloc[0]
-
-            try:
-                superfamily = data.iloc[0]["superfamily"]
-            except KeyError:
-                superfamily = ".".join(pdb_file.split("/")[-5:-1])
+            cath_domain = self.dm.label_encoder.inverse_transform(cath_domain_embedding.cpu().int().numpy())[0]
+            superfamily  = self.dm.domain_to_superfamily[cath_domain]
 
             index = pd.MultiIndex.from_tuples([tuple(c) for c in coords.cpu().int().numpy()], names=["x", "y", "z"])
             relevance = pd.DataFrame(relevance.cpu().numpy(), index=index)
-            self.atomic_relevance.update(relevance, pdb_file, cath_domain, superfamily, batch_index=batch_idx)
+            
+            self.atomic_relevance.update(relevance, cath_domain, superfamily, self.checkpoint, batch_index=batch_idx)

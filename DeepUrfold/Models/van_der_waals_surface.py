@@ -4,10 +4,16 @@ from collections import defaultdict
 import torch
 import numpy as np
 import torch.nn as nn
-import MinkowskiEngine as ME
+import warnings
 
-from molmimic.common.ProteinTables import vdw_radii, vdw_r_volume
-from molmimic.common.features import atom_features, atom_feature_aggregegation
+try:
+    import MinkowskiEngine as ME
+except ImportError:
+    ME = None
+    warnings.warn("Minkowski Engine not installed, wont be able to create batches")
+
+from Prop3D.common.ProteinTables import vdw_radii, vdw_r_volume
+from Prop3D.common.features import all_features
 
 search_algorithms = {}
 
@@ -33,9 +39,9 @@ class VanDerWallsSurface(nn.Module):
                 for agg in aggregate]
         else:
             if features is None:
-                features = atom_features
+                features = all_features.atom_features
             self.aggregegation_fns = [ \
-                aggregegation_fns_map[atom_feature_aggregegation[f]] for f in features]
+                aggregegation_fns_map[all_features.atom_feature_aggregegation[f]] for f in features]
 
     def forward(self, coordinates_radii, features, other=None, device=None):
         assert features.size()[-1]==len(self.aggregegation_fns), (features.size(), len(self.aggregegation_fns))
@@ -666,7 +672,7 @@ if __name__ == "__main__":
     from DeepUrfold.Models.van_der_waals_surface import VanDerWallsSurface
     from DeepUrfold.Datasets.DomainStructureDataset import DomainStructureDataset
     from DeepUrfold.Models.van_der_waals_surface import make_grid
-    from molmimic.common.ProteinTables import vdw_r_volume
+    from Prop3D.common.ProteinTables import vdw_r_volume
     import torch, math, frnn
 
     atom_features = [

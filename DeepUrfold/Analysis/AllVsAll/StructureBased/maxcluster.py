@@ -9,7 +9,7 @@ from Bio.PDB.Polypeptide import three_to_one
 
 from DeepUrfold.Analysis.AllVsAll.StructureBased import StructureBasedAllVsAll
 from DeepUrfold.DataModules.DomainStructureDataModule import DomainStructureDataModule
-from molmimic.parsers.MaxCluster import MaxCluster
+from Prop3D.parsers.MaxCluster import MaxCluster
 
 class MaxClusterAllVsAll(StructureBasedAllVsAll):
     NJOBS = 60

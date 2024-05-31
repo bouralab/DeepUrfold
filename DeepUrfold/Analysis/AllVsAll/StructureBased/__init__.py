@@ -13,7 +13,7 @@ from joblib import Parallel, delayed
 
 from DeepUrfold.Analysis.AllVsAll import AllVsAll
 from DeepUrfold.DataModules.DistributedDomainStructureDataModule import DistributedDomainStructureDataModule
-from molmimic.util.pdb import remove_ter_lines
+from Prop3D.util.pdb import remove_ter_lines
 
 def fix_ter(pdb_file):
     if not os.path.isfile(pdb_file+".noter") or os.stat(pdb_file+".noter").st_size == 0:
