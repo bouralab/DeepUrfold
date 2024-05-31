@@ -15,7 +15,6 @@ packages = [
     "DeepUrfold.Analysis.AllVsAll.StructureBased",
     "DeepUrfold.Analysis.Webapp",
     "DeepUrfold.DataModules",
-    "DeepUrfold.Datasets",
     "DeepUrfold.Models",
     "DeepUrfold.Metrics",
     "DeepUrfold.Trainers",
