@@ -2,8 +2,8 @@
 
 **Note: this is all research code and not all components are functional**
 
-This repository contains code for the paper "Exploring Fold Space with Deep Generative Models:
-Reconciling the Continuous vs Discrete Dichotomy with an ‘Urfold’ Model of Protein Inter-relationships" by Eli J. Draizen, Stella Veretnik, Cameron Mura, and Philip E. Bourne.
+This repository contains code for the paper "Deep Generative Models of Protein Structure Uncover Distant Relationships Across a Continuous Fold Space"
+by Eli J. Draizen, Stella Veretnik, Cameron Mura, and Philip E. Bourne.
 
 ## Goal
 
