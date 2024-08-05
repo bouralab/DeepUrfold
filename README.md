@@ -3,11 +3,11 @@
 **Note: this is all research code and not all components are functional**
 
 This repository contains code for the paper "Deep Generative Models of Protein Structure Uncover Distant Relationships Across a Continuous Fold Space"
-by Eli J. Draizen, Stella Veretnik, Cameron Mura, and Philip E. Bourne.
+by Eli J. Draizen, Stella Veretnik, Cameron Mura, and Philip E. Bourne [1].
 
 ## Goal
 
-We hypothesize that there may be a bona fide level/entity that exists in between the Architecture and Topology entities in hierarchies of protein structure space presented by CATH, SCOP, and ECOD, to represent '3D architectural similarity despite topological variability.' We call this the 'Urfold' [1].
+We hypothesize that there may be a bona fide level/entity that exists in between the Architecture and Topology entities in hierarchies of protein structure space presented by CATH, SCOP, and ECOD, to represent '3D architectural similarity despite topological variability.' We call this the 'Urfold' [2].
 
 We present DeepUrfold, a new tool to explore the protein structure space in hopes of finding new Urfolds. This includes:
 
@@ -114,14 +114,13 @@ python -m DeepUrfold.Analysis.StructureBased.deepurfold_ava \
   [SUPERFAMILY...] #Default is all 20 superfamilies used in paper
 ```
 
-This will train all superfamily models, evaluate all representative domains against each superfamily model, and create stochastic block model communities for each domain.
+This will train all superfamily models, evaluate all representative domains against each superfamily model, and create stochastic block model (SBM) communities for each domain.
 
 We also include sequence- and structure- based models to compare against that can be run in a similar way. Please see their help pages for more info. Some structure-based models haven't been updated to use HSDS so may not work.
 
-## References
+# Citation References
 
-[1] Mura, C, Veretnik, S, Bourne, PE. The Urfold: Structural similarity just above the superfold level? Protein Science. 2019; 28: 2119– 2126. https://doi.org/10.1002/pro.3742
+[1] Draizen EJ, Veretnik S, Mura C & PE Bourne. "Deep Generative Models of Protein Structure Uncover Distant Relationships Across a Continuous Fold Space". 2024; (https://doi.org/10.1101/2022.07.29.501943)
 
-## Citation
+[2] Mura C, Veretnik S & PE Bourne. "The Urfold: Structural similarity just above the superfold level?" Protein Science. 2019; 28: 2119–2126. https://doi.org/10.1002/pro.3742
 
-We will post the bioRxiv link soon
